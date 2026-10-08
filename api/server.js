@@ -14,8 +14,10 @@ app.get("/", (req, res) => {
   });
 });
 
-const PORT = 3000;
 app.use("/alunos", alunosRoutes);
+
+const PORT = 3000;
+
 app.listen(PORT, () => {
   console.log(`API SGEI funcionando na porta ${PORT}`);
 });
