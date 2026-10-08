@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import db from "./database.js";
+import alunosRoutes from "./routes/alunos.js";
 
 const app = express();
 
@@ -13,7 +15,7 @@ app.get("/", (req, res) => {
 });
 
 const PORT = 3000;
-
+app.use("/alunos", alunosRoutes);
 app.listen(PORT, () => {
   console.log(`API SGEI funcionando na porta ${PORT}`);
 });
