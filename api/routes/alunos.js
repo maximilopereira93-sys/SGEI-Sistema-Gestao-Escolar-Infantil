@@ -175,4 +175,38 @@ router.put("/:id", (req, res) => {
   });
 });
 
+router.delete("/:id", (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({
+      erro: "ID inválido."
+    });
+  }
+
+  const consulta = db.exec(
+    "SELECT id FROM alunos WHERE id = ?",
+    [id]
+  );
+
+  if (
+    consulta.length === 0 ||
+    consulta[0].values.length === 0
+  ) {
+    return res.status(404).json({
+      erro: "Aluno não encontrado."
+    });
+  }
+
+  db.run("DELETE FROM alunos WHERE id = ?", [id]);
+
+  salvarBanco();
+
+  res.json({
+    mensagem: "Aluno excluído com sucesso!",
+    id
+  });
+});
+
+
 export default router;
