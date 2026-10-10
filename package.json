@@ -1,3 +1,4 @@
+
 {
   "name": "vite-react-starter",
   "private": true,
@@ -5,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "api": "node api/server.js",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview"
