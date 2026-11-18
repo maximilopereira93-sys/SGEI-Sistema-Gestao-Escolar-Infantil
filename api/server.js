@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import db from "./database.js";
 import alunosRoutes from "./routes/alunos.js";
+import turmasRoutes from "./routes/turmas.js";
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/alunos", alunosRoutes);
+app.use("/turmas", turmasRoutes);
 
 const PORT = 3000;
 

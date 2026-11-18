@@ -35,6 +35,17 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS turmas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    turno TEXT NOT NULL,
+    faixa_etaria TEXT NOT NULL,
+    professor TEXT NOT NULL,
+    capacidade INTEGER NOT NULL
+  )
+`);
+
 fs.writeFileSync(
   dbPath,
   Buffer.from(db.export())
