@@ -1,4 +1,3 @@
-
 import express from "express";
 import db, { salvarBanco } from "../database.js";
 
@@ -95,12 +94,32 @@ router.post("/", (req, res) => {
   }
 });
 
-// LISTAR ALUNOS
-router.get("/", (req, res) => {
+// ESTATÍSTICAS DOS ALUNOS (Card API-08)
+router.get("/estatisticas", (req, res) => {
   try {
-    const resultado = db.exec(
-      "SELECT * FROM alunos ORDER BY id"
-    );
+    const resultado = db.exec("SELECT COUNT(*) as total FROM alunos");
+    const total = resultado.length ? resultado[0].values[0][0] : 0;
+    return res.json({ total_alunos: total });
+  } catch (error) {
+    return res.status(500).json({ erro: "Erro ao calcular estatísticas." });
+  }
+});
+
+// LISTAR ALUNOS COM FILTRO DE BUSCA (Card API-07)
+router.get("/", (req, res) => {
+  const { busca } = req.query;
+
+  try {
+    let resultado;
+    if (busca && busca.trim()) {
+      const termo = `%${busca.trim()}%`;
+      resultado = db.exec(
+        "SELECT * FROM alunos WHERE nome LIKE ? OR responsavel LIKE ? ORDER BY id",
+        [termo, termo]
+      );
+    } else {
+      resultado = db.exec("SELECT * FROM alunos ORDER BY id");
+    }
 
     if (!resultado.length) {
       return res.json([]);
