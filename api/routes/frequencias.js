@@ -27,6 +27,7 @@ function converterObjeto(resultado) {
   return obj;
 }
 
+// POST /frequencias
 router.post("/", (req, res) => {
   const erro = validarFrequencia(req.body);
   if (erro) return res.status(400).json({ erro });
@@ -53,6 +54,7 @@ router.post("/", (req, res) => {
   }
 });
 
+// GET /frequencias/estatisticas
 router.get("/estatisticas", (req, res) => {
   try {
     const resTotal = db.exec("SELECT COUNT(*) FROM frequencias");
@@ -67,6 +69,69 @@ router.get("/estatisticas", (req, res) => {
   }
 });
 
+// GET /frequencias/relatorio (Endpoint dedicado para a tela de Relatórios + Exportação CSV)
+router.get("/relatorio", (req, res) => {
+  const { aluno, status, turma, data } = req.query;
+
+  try {
+    const condicoes = [];
+    const params = [];
+
+    if (aluno && aluno.trim()) {
+      condicoes.push("aluno_nome LIKE ?");
+      params.push(`%${aluno.trim()}%`);
+    }
+    if (status && status.trim() && status !== "Todos") {
+      condicoes.push("status = ?");
+      params.push(status.trim());
+    }
+    if (turma && turma.trim() && turma !== "Todas") {
+      condicoes.push("turma_nome = ?");
+      params.push(turma.trim());
+    }
+    if (data && data.trim()) {
+      condicoes.push("data = ?");
+      params.push(data.trim());
+    }
+
+    const whereClause = condicoes.length ? `WHERE ${condicoes.join(" AND ")}` : "";
+    const resultado = db.exec(
+      `SELECT * FROM frequencias ${whereClause} ORDER BY data DESC, id DESC`,
+      params
+    );
+
+    let registros = [];
+    if (resultado.length) {
+      const colunas = resultado[0].columns;
+      registros = resultado[0].values.map((linha) => {
+        const item = {};
+        colunas.forEach((col, i) => { item[col] = linha[i]; });
+        return item;
+      });
+    }
+
+    const total = registros.length;
+    const presentes = registros.filter((r) => r.status === "Presente").length;
+    const ausentes = registros.filter((r) => r.status === "Falta" || r.status === "Ausente").length;
+    const justificados = registros.filter((r) => r.status === "Falta Justificada" || r.status === "Justificado").length;
+    const taxa_presenca = total > 0 ? ((presentes / total) * 100).toFixed(1) : "0.0";
+
+    return res.json({
+      resumo: {
+        total,
+        presentes,
+        ausentes,
+        justificados,
+        taxa_presenca
+      },
+      registros
+    });
+  } catch (error) {
+    return res.status(500).json({ erro: "Não foi possível gerar o relatório de frequência." });
+  }
+});
+
+// GET /frequencias
 router.get("/", (req, res) => {
   const { busca } = req.query;
   try {
@@ -95,6 +160,7 @@ router.get("/", (req, res) => {
   }
 });
 
+// PUT /frequencias/:id
 router.put("/:id", (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ erro: "ID inválido." });
@@ -128,6 +194,7 @@ router.put("/:id", (req, res) => {
   }
 });
 
+// DELETE /frequencias/:id
 router.delete("/:id", (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ erro: "ID inválido." });
