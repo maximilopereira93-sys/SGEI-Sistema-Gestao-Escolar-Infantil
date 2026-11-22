@@ -5,9 +5,9 @@ const API_BASE = 'http://localhost:3000';
 export default function App() {
   const [logado, setLogado] = useState(false);
   const [credenciais, setCredenciais] = useState({ usuario: '', senha: '', perfil: 'professor' });
-  const [abaAtiva, setAbaAtiva] = useState('alunos'); // 'alunos' | 'turmas' | 'professores' | 'frequencias' | 'comunicados' | 'agenda'
+  const [abaAtiva, setAbaAtiva] = useState('relatorios'); // 'dashboard' | 'frequencias' | 'alunos' | 'turmas' | 'professores' | 'agenda' | 'relatorios' | 'comunicados'
 
-  // Resumo / Estatísticas
+  // Resumo / Estatísticas Gerais
   const [stats, setStats] = useState({
     alunos: 0,
     turmas: 0,
@@ -15,6 +15,18 @@ export default function App() {
     presenca: 100,
     comunicados: 0,
     agenda: 0
+  });
+
+  // Estados Relatórios
+  const [relatorio, setRelatorio] = useState({
+    resumo: { total: 0, presentes: 0, ausentes: 0, justificados: 0, taxa_presenca: '0.0' },
+    registros: []
+  });
+  const [filtrosRelatorio, setFiltrosRelatorio] = useState({
+    aluno: '',
+    status: 'Todos',
+    turma: 'Todas',
+    data: ''
   });
 
   // Estados Alunos
@@ -72,6 +84,24 @@ export default function App() {
   });
 
   const [mensagem, setMensagem] = useState({ texto: '', tipo: '' });
+
+  const carregarRelatorio = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filtrosRelatorio.aluno.trim()) params.append('aluno', filtrosRelatorio.aluno.trim());
+      if (filtrosRelatorio.status !== 'Todos') params.append('status', filtrosRelatorio.status);
+      if (filtrosRelatorio.turma !== 'Todas') params.append('turma', filtrosRelatorio.turma);
+      if (filtrosRelatorio.data) params.append('data', filtrosRelatorio.data);
+
+      const res = await fetch(`${API_BASE}/frequencias/relatorio?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRelatorio(data);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar relatório:', err);
+    }
+  };
 
   const carregarTudo = async () => {
     try {
@@ -139,6 +169,12 @@ export default function App() {
     }
   }, [logado, buscaAluno, buscaTurma, buscaProfessor, buscaFrequencia, buscaComunicado, buscaAgenda]);
 
+  useEffect(() => {
+    if (logado) {
+      carregarRelatorio();
+    }
+  }, [logado, filtrosRelatorio, frequencias]);
+
   const handleLogin = (e) => {
     e.preventDefault();
     if (credenciais.usuario && credenciais.senha) {
@@ -154,7 +190,28 @@ export default function App() {
     return `${dia}/${mes}/${ano}`;
   };
 
-  // Função genérica de envio (POST / PUT)
+  // Exportar CSV da Tabela de Frequência
+  const exportarCSV = () => {
+    const cabecalho = ['Aluno', 'Data', 'Turma', 'Status', 'Observacao'];
+    const linhas = relatorio.registros.map((r) => [
+      `"${r.aluno_nome}"`,
+      `"${formatarDataBR(r.data)}"`,
+      `"${r.turma_nome}"`,
+      `"${r.status}"`,
+      `"${r.observacao || ''}"`
+    ]);
+
+    const conteudoCSV = [cabecalho.join(';'), ...linhas.map((l) => l.join(';'))].join('\n');
+    const blob = new Blob(['\uFEFF' + conteudoCSV], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `relatorio_frequencia_sgei_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const salvarRegistro = async (e, endpoint, idEdicao, payload, limparFn, msgSucesso) => {
     e.preventDefault();
     try {
@@ -178,7 +235,6 @@ export default function App() {
     }
   };
 
-  // Função genérica de exclusão (DELETE)
   const excluirRegistro = async (endpoint, id, msgConfirm, msgSucesso) => {
     if (!confirm(msgConfirm)) return;
     try {
@@ -195,565 +251,723 @@ export default function App() {
     }
   };
 
+  // Badge colorida igual à imagem
+  const renderBadgeStatus = (status) => {
+    let bg = '#16a34a'; // verde
+    let label = status;
+
+    if (status === 'Falta' || status === 'Ausente') {
+      bg = '#ef4444'; // vermelho
+      label = 'Ausente';
+    } else if (status === 'Falta Justificada' || status === 'Justificado') {
+      bg = '#eab308'; // amarelo
+      label = 'Justificado';
+    }
+
+    return (
+      <span style={{
+        backgroundColor: bg,
+        color: '#fff',
+        padding: '4px 12px',
+        borderRadius: '999px',
+        fontSize: '12px',
+        fontWeight: '600',
+        display: 'inline-block'
+      }}>
+        {label}
+      </span>
+    );
+  };
+
   if (!logado) {
     return (
-      <div style={{ maxWidth: '400px', margin: '80px auto', padding: '20px', border: '1px solid #ccc', borderRadius: '8px', fontFamily: 'sans-serif' }}>
-        <h2>SGEI - Login</h2>
-        <p>Sistema de Gestão Escolar Infantil</p>
-        <form onSubmit={handleLogin}>
-          <div style={{ marginBottom: '12px' }}>
-            <label>Perfil de Acesso:</label><br />
-            <select
-              value={credenciais.perfil}
-              onChange={(e) => setCredenciais({ ...credenciais, perfil: e.target.value })}
-              style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
-            >
-              <option value="professor">👨‍🏫 Professor / Gestão</option>
-              <option value="responsavel">👨‍👩‍👧 Responsável / Pais</option>
-            </select>
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label>Usuário:</label><br />
-            <input
-              type="text"
-              style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
-              value={credenciais.usuario}
-              onChange={(e) => setCredenciais({ ...credenciais, usuario: e.target.value })}
-              required
-            />
-          </div>
-          <div style={{ marginBottom: '15px' }}>
-            <label>Senha:</label><br />
-            <input
-              type="password"
-              style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
-              value={credenciais.senha}
-              onChange={(e) => setCredenciais({ ...credenciais, senha: e.target.value })}
-              required
-            />
-          </div>
-          <button type="submit" style={{ width: '100%', padding: '10px', background: '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-            Entrar no Sistema
-          </button>
-        </form>
+      <div style={{ minHeight: '100vh', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        <div style={{ width: '100%', maxWidth: '400px', background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.06)' }}>
+          <h2 style={{ marginTop: 0, color: '#0f172a' }}>Sistema Escolar (SGEI)</h2>
+          <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>Gestão Escolar Infantil</p>
+          <form onSubmit={handleLogin}>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Perfil de Acesso</label>
+              <select
+                value={credenciais.perfil}
+                onChange={(e) => setCredenciais({ ...credenciais, perfil: e.target.value })}
+                style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+              >
+                <option value="professor">Professor(a) / Gestão</option>
+                <option value="responsavel">Responsável / Pais</option>
+              </select>
+            </div>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Nome / Usuário</label>
+              <input
+                type="text"
+                placeholder="Ex: Maria Silva"
+                style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                value={credenciais.usuario}
+                onChange={(e) => setCredenciais({ ...credenciais, usuario: e.target.value })}
+                required
+              />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Senha</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                value={credenciais.senha}
+                onChange={(e) => setCredenciais({ ...credenciais, senha: e.target.value })}
+                required
+              />
+            </div>
+            <button type="submit" style={{ width: '100%', padding: '11px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
+              Entrar no Sistema
+            </button>
+          </form>
+        </div>
       </div>
     );
   }
 
-  const abas = [
-    { id: 'alunos', label: '👶 Alunos' },
-    { id: 'turmas', label: '🏫 Turmas' },
-    { id: 'professores', label: '👩‍🏫 Professores' },
-    { id: 'frequencias', label: '✅ Frequência' },
-    { id: 'comunicados', label: '📢 Comunicados' },
-    { id: 'agenda', label: '📔 Agenda Diária' }
+  const menuLateral = [
+    { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
+    { id: 'frequencias', label: 'Frequência', icon: '📋' },
+    { id: 'alunos', label: 'Alunos', icon: '👤+' },
+    { id: 'turmas', label: 'Turmas', icon: '🏫' },
+    { id: 'professores', label: 'Professores', icon: '👩‍🏫' },
+    { id: 'agenda', label: 'Agenda Diária', icon: '📔' },
+    { id: 'relatorios', label: 'Relatórios', icon: '📄' },
+    { id: 'comunicados', label: 'Comunicados', icon: '🔔' }
   ];
 
+  // Lista única de turmas para o select de filtro
+  const turmasUnicas = Array.from(new Set([
+    ...turmas.map((t) => t.nome),
+    ...frequencias.map((f) => f.turma_nome)
+  ])).filter(Boolean);
+
   return (
-    <div style={{ maxWidth: '1100px', margin: '30px auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
-        <div>
-          <h1 style={{ margin: 0 }}>SGEI - Gestão Escolar Infantil</h1>
-          <span style={{ fontSize: '14px', color: '#555' }}>
-            Perfil: <strong>{credenciais.perfil === 'professor' ? '👨‍🏫 Professor / Gestão' : '👨‍👩‍👧 Responsável / Pais'}</strong>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, -apple-system, sans-serif', color: '#0f172a', background: '#eef2ff' }}>
+      {/* BARRA SUPERIOR */}
+      <header style={{ height: '64px', background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '0 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#090d16' }}>Sistema Escolar</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', fontSize: '14px' }}>
+          <span style={{ color: '#64748b' }}>
+            {credenciais.perfil === 'professor' ? 'Professor(a): ' : 'Responsável: '}
+            <strong style={{ color: '#0f172a' }}>{credenciais.usuario}</strong>
           </span>
+          <button
+            onClick={() => setLogado(false)}
+            style={{ background: 'transparent', border: 'none', color: '#0f172a', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            ↪ Sair
+          </button>
         </div>
-        <button onClick={() => setLogado(false)} style={{ padding: '6px 12px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          Sair
-        </button>
       </header>
 
-      {/* CARDS DE INDICADORES */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '20px' }}>
-        <div style={{ background: '#e9f5ff', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #007bff' }}>
-          <span style={{ fontSize: '12px', color: '#555' }}>Alunos</span>
-          <h2 style={{ margin: '4px 0 0 0', color: '#0056b3' }}>{stats.alunos}</h2>
-        </div>
-        <div style={{ background: '#fff8e6', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #ffc107' }}>
-          <span style={{ fontSize: '12px', color: '#555' }}>Turmas</span>
-          <h2 style={{ margin: '4px 0 0 0', color: '#b38600' }}>{stats.turmas}</h2>
-        </div>
-        <div style={{ background: '#f3e8ff', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #6f42c1' }}>
-          <span style={{ fontSize: '12px', color: '#555' }}>Professores</span>
-          <h2 style={{ margin: '4px 0 0 0', color: '#4c2889' }}>{stats.professores}</h2>
-        </div>
-        <div style={{ background: '#eefaf0', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #28a745' }}>
-          <span style={{ fontSize: '12px', color: '#555' }}>Frequência</span>
-          <h2 style={{ margin: '4px 0 0 0', color: '#1e7e34' }}>{stats.presenca}%</h2>
-        </div>
-        <div style={{ background: '#ffeef0', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #dc3545' }}>
-          <span style={{ fontSize: '12px', color: '#555' }}>Comunicados</span>
-          <h2 style={{ margin: '4px 0 0 0', color: '#a71d2a' }}>{stats.comunicados}</h2>
-        </div>
-        <div style={{ background: '#e6f7f9', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #17a2b8' }}>
-          <span style={{ fontSize: '12px', color: '#555' }}>Agenda Diária</span>
-          <h2 style={{ margin: '4px 0 0 0', color: '#117a8b' }}>{stats.agenda}</h2>
-        </div>
-      </div>
-
-      {/* MENU DE ABAS */}
-      <nav style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '2px solid #dee2e6', paddingBottom: '10px', flexWrap: 'wrap' }}>
-        {abas.map((aba) => (
-          <button
-            key={aba.id}
-            onClick={() => { setAbaAtiva(aba.id); setMensagem({ texto: '', tipo: '' }); }}
-            style={{
-              padding: '10px 15px',
-              background: abaAtiva === aba.id ? '#007bff' : '#e9ecef',
-              color: abaAtiva === aba.id ? '#fff' : '#333',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
-            {aba.label}
-          </button>
-        ))}
-      </nav>
-
-      {mensagem.texto && (
-        <div style={{
-          padding: '10px',
-          background: mensagem.tipo === 'erro' ? '#f8d7da' : '#d4edda',
-          color: mensagem.tipo === 'erro' ? '#721c24' : '#155724',
-          marginBottom: '15px',
-          borderRadius: '4px'
-        }}>
-          {mensagem.texto}
-        </div>
-      )}
-
-      {/* ==================== 1. ABA ALUNOS ==================== */}
-      {abaAtiva === 'alunos' && (
-        <>
-          {credenciais.perfil === 'professor' && (
-            <section style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '25px' }}>
-              <h3>{idEdicaoAluno ? '✏️ Editar Aluno' : '➕ Cadastrar Novo Aluno'}</h3>
-              <form
-                onSubmit={(e) => salvarRegistro(
-                  e, 'alunos', idEdicaoAluno, formAluno,
-                  () => { setIdEdicaoAluno(null); setFormAluno({ nome: '', data_nascimento: '', responsavel: '', telefone: '', email: '' }); },
-                  idEdicaoAluno ? 'Aluno atualizado com sucesso!' : 'Aluno cadastrado com sucesso!'
-                )}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}
+      {/* CORPO: SIDEBAR + ÁREA PRINCIPAL */}
+      <div style={{ display: 'flex', flex: 1 }}>
+        {/* MENU LATERAL ESQUERDO */}
+        <aside style={{ width: '240px', background: '#fff', borderRight: '1px solid #e2e8f0', padding: '20px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {menuLateral.map((item) => {
+            const ativo = abaAtiva === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => { setAbaAtiva(item.id); setMensagem({ texto: '', tipo: '' }); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '11px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: ativo ? '#090d16' : 'transparent',
+                  color: ativo ? '#fff' : '#1e293b',
+                  fontWeight: ativo ? '600' : '500',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s'
+                }}
               >
-                <div><label>Nome Completo:</label><input type="text" value={formAluno.nome} onChange={(e) => setFormAluno({ ...formAluno, nome: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div><label>Data de Nascimento:</label><input type="date" value={formAluno.data_nascimento} onChange={(e) => setFormAluno({ ...formAluno, data_nascimento: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div><label>Nome do Responsável:</label><input type="text" value={formAluno.responsavel} onChange={(e) => setFormAluno({ ...formAluno, responsavel: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div><label>Telefone:</label><input type="text" value={formAluno.telefone} onChange={(e) => setFormAluno({ ...formAluno, telefone: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div style={{ gridColumn: 'span 2' }}><label>E-mail (opcional):</label><input type="email" value={formAluno.email} onChange={(e) => setFormAluno({ ...formAluno, email: e.target.value })} style={{ width: '100%', padding: '8px' }} /></div>
-                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
-                  <button type="submit" style={{ padding: '10px 20px', background: idEdicaoAluno ? '#28a745' : '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{idEdicaoAluno ? 'Atualizar Aluno' : 'Salvar Aluno'}</button>
-                  {idEdicaoAluno && <button type="button" onClick={() => { setIdEdicaoAluno(null); setFormAluno({ nome: '', data_nascimento: '', responsavel: '', telefone: '', email: '' }); }} style={{ padding: '10px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancelar</button>}
-                </div>
-              </form>
-            </section>
+                <span style={{ width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </aside>
+
+        {/* CONTEÚDO PRINCIPAL */}
+        <main style={{ flex: 1, padding: '28px' }}>
+          {mensagem.texto && (
+            <div style={{
+              padding: '12px 16px',
+              background: mensagem.tipo === 'erro' ? '#fee2e2' : '#dcfce7',
+              color: mensagem.tipo === 'erro' ? '#991b1b' : '#166534',
+              marginBottom: '18px',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}>
+              {mensagem.texto}
+            </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0 }}>📋 Lista de Alunos</h3>
-            <input type="text" placeholder="🔍 Buscar aluno ou responsável..." value={buscaAluno} onChange={(e) => setBuscaAluno(e.target.value)} style={{ padding: '8px 12px', width: '280px', borderRadius: '4px', border: '1px solid #ccc' }} />
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#eee' }}>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>ID</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Nome</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Nascimento</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Responsável</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Telefone</th>
-                {credenciais.perfil === 'professor' && <th style={{ padding: '8px', border: '1px solid #ddd' }}>Ações</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {alunos.map((a) => (
-                <tr key={a.id}>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{a.id}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{a.nome}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{formatarDataBR(a.data_nascimento)}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{a.responsavel}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{a.telefone}</td>
-                  {credenciais.perfil === 'professor' && (
-                    <td style={{ padding: '8px', border: '1px solid #ddd', display: 'flex', gap: '5px' }}>
-                      <button onClick={() => { setIdEdicaoAluno(a.id); setFormAluno({ nome: a.nome, data_nascimento: a.data_nascimento, responsavel: a.responsavel, telefone: a.telefone, email: a.email || '' }); }} style={{ padding: '4px 8px', background: '#ffc107', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Editar</button>
-                      <button onClick={() => excluirRegistro('alunos', a.id, 'Excluir este aluno?', 'Aluno excluído com sucesso!')} style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Excluir</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-
-      {/* ==================== 2. ABA TURMAS ==================== */}
-      {abaAtiva === 'turmas' && (
-        <>
-          {credenciais.perfil === 'professor' && (
-            <section style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '25px' }}>
-              <h3>{idEdicaoTurma ? '✏️ Editar Turma' : '➕ Cadastrar Nova Turma'}</h3>
-              <form
-                onSubmit={(e) => salvarRegistro(
-                  e, 'turmas', idEdicaoTurma, { ...formTurma, capacidade: Number(formTurma.capacidade) },
-                  () => { setIdEdicaoTurma(null); setFormTurma({ nome: '', turno: 'Matutino', faixa_etaria: '', professor: '', capacidade: '' }); },
-                  idEdicaoTurma ? 'Turma atualizada com sucesso!' : 'Turma cadastrada com sucesso!'
-                )}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}
-              >
-                <div><label>Nome da Turma:</label><input type="text" value={formTurma.nome} onChange={(e) => setFormTurma({ ...formTurma, nome: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
+          {/* ==================== TELA: RELATÓRIOS (IGUAL À IMAGEM) ==================== */}
+          {abaAtiva === 'relatorios' && (
+            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0' }}>
+              {/* Cabeçalho do Card */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
                 <div>
-                  <label>Turno:</label>
-                  <select value={formTurma.turno} onChange={(e) => setFormTurma({ ...formTurma, turno: e.target.value })} style={{ width: '100%', padding: '8px' }}>
-                    <option value="Matutino">Matutino</option>
-                    <option value="Vespertino">Vespertino</option>
-                    <option value="Integral">Integral</option>
-                  </select>
+                  <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Tabela de Frequência</h2>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#64748b' }}>
+                    Visualize e gerencie o registro de frequência dos alunos
+                  </p>
                 </div>
-                <div><label>Faixa Etária:</label><input type="text" value={formTurma.faixa_etaria} onChange={(e) => setFormTurma({ ...formTurma, faixa_etaria: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div><label>Professor Responsável:</label><input type="text" value={formTurma.professor} onChange={(e) => setFormTurma({ ...formTurma, professor: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div style={{ gridColumn: 'span 2' }}><label>Capacidade:</label><input type="number" min="1" value={formTurma.capacidade} onChange={(e) => setFormTurma({ ...formTurma, capacidade: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
-                  <button type="submit" style={{ padding: '10px 20px', background: idEdicaoTurma ? '#28a745' : '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{idEdicaoTurma ? 'Atualizar Turma' : 'Salvar Turma'}</button>
-                  {idEdicaoTurma && <button type="button" onClick={() => { setIdEdicaoTurma(null); setFormTurma({ nome: '', turno: 'Matutino', faixa_etaria: '', professor: '', capacidade: '' }); }} style={{ padding: '10px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancelar</button>}
-                </div>
-              </form>
-            </section>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0 }}>🏫 Turmas Cadastradas</h3>
-            <input type="text" placeholder="🔍 Buscar turma ou professor..." value={buscaTurma} onChange={(e) => setBuscaTurma(e.target.value)} style={{ padding: '8px 12px', width: '280px', borderRadius: '4px', border: '1px solid #ccc' }} />
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#eee' }}>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>ID</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Turma</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Turno</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Faixa Etária</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Professor</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Vagas</th>
-                {credenciais.perfil === 'professor' && <th style={{ padding: '8px', border: '1px solid #ddd' }}>Ações</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {turmas.map((t) => (
-                <tr key={t.id}>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{t.id}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{t.nome}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{t.turno}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{t.faixa_etaria}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{t.professor}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{t.capacidade}</td>
-                  {credenciais.perfil === 'professor' && (
-                    <td style={{ padding: '8px', border: '1px solid #ddd', display: 'flex', gap: '5px' }}>
-                      <button onClick={() => { setIdEdicaoTurma(t.id); setFormTurma({ nome: t.nome, turno: t.turno, faixa_etaria: t.faixa_etaria, professor: t.professor, capacidade: t.capacidade }); }} style={{ padding: '4px 8px', background: '#ffc107', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Editar</button>
-                      <button onClick={() => excluirRegistro('turmas', t.id, 'Excluir esta turma?', 'Turma excluída com sucesso!')} style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Excluir</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-
-      {/* ==================== 3. ABA PROFESSORES ==================== */}
-      {abaAtiva === 'professores' && (
-        <>
-          {credenciais.perfil === 'professor' && (
-            <section style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '25px' }}>
-              <h3>{idEdicaoProfessor ? '✏️ Editar Professor' : '➕ Cadastrar Novo Professor'}</h3>
-              <form
-                onSubmit={(e) => salvarRegistro(
-                  e, 'professores', idEdicaoProfessor, formProfessor,
-                  () => { setIdEdicaoProfessor(null); setFormProfessor({ nome: '', formacao: '', turno: 'Matutino', telefone: '', email: '' }); },
-                  idEdicaoProfessor ? 'Professor atualizado com sucesso!' : 'Professor cadastrado com sucesso!'
-                )}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}
-              >
-                <div><label>Nome Completo:</label><input type="text" value={formProfessor.nome} onChange={(e) => setFormProfessor({ ...formProfessor, nome: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div><label>Formação (ex: Pedagogia):</label><input type="text" value={formProfessor.formacao} onChange={(e) => setFormProfessor({ ...formProfessor, formacao: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div>
-                  <label>Turno:</label>
-                  <select value={formProfessor.turno} onChange={(e) => setFormProfessor({ ...formProfessor, turno: e.target.value })} style={{ width: '100%', padding: '8px' }}>
-                    <option value="Matutino">Matutino</option>
-                    <option value="Vespertino">Vespertino</option>
-                    <option value="Integral">Integral</option>
-                  </select>
-                </div>
-                <div><label>Telefone:</label><input type="text" value={formProfessor.telefone} onChange={(e) => setFormProfessor({ ...formProfessor, telefone: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div style={{ gridColumn: 'span 2' }}><label>E-mail (opcional):</label><input type="email" value={formProfessor.email} onChange={(e) => setFormProfessor({ ...formProfessor, email: e.target.value })} style={{ width: '100%', padding: '8px' }} /></div>
-                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
-                  <button type="submit" style={{ padding: '10px 20px', background: idEdicaoProfessor ? '#28a745' : '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{idEdicaoProfessor ? 'Atualizar Professor' : 'Salvar Professor'}</button>
-                  {idEdicaoProfessor && <button type="button" onClick={() => { setIdEdicaoProfessor(null); setFormProfessor({ nome: '', formacao: '', turno: 'Matutino', telefone: '', email: '' }); }} style={{ padding: '10px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancelar</button>}
-                </div>
-              </form>
-            </section>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0 }}>👩‍🏫 Equipe Docente</h3>
-            <input type="text" placeholder="🔍 Buscar professor ou formação..." value={buscaProfessor} onChange={(e) => setBuscaProfessor(e.target.value)} style={{ padding: '8px 12px', width: '280px', borderRadius: '4px', border: '1px solid #ccc' }} />
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#eee' }}>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>ID</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Nome</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Formação</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Turno</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Telefone</th>
-                {credenciais.perfil === 'professor' && <th style={{ padding: '8px', border: '1px solid #ddd' }}>Ações</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {professores.map((p) => (
-                <tr key={p.id}>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{p.id}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{p.nome}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{p.formacao}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{p.turno}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{p.telefone}</td>
-                  {credenciais.perfil === 'professor' && (
-                    <td style={{ padding: '8px', border: '1px solid #ddd', display: 'flex', gap: '5px' }}>
-                      <button onClick={() => { setIdEdicaoProfessor(p.id); setFormProfessor({ nome: p.nome, formacao: p.formacao, turno: p.turno, telefone: p.telefone, email: p.email || '' }); }} style={{ padding: '4px 8px', background: '#ffc107', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Editar</button>
-                      <button onClick={() => excluirRegistro('professores', p.id, 'Excluir este professor?', 'Professor excluído com sucesso!')} style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Excluir</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-
-      {/* ==================== 4. ABA FREQUÊNCIA ==================== */}
-      {abaAtiva === 'frequencias' && (
-        <>
-          {credenciais.perfil === 'professor' && (
-            <section style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '25px' }}>
-              <h3>{idEdicaoFrequencia ? '✏️ Editar Chamada' : '➕ Registrar Frequência / Chamada'}</h3>
-              <form
-                onSubmit={(e) => salvarRegistro(
-                  e, 'frequencias', idEdicaoFrequencia, formFrequencia,
-                  () => { setIdEdicaoFrequencia(null); setFormFrequencia({ aluno_nome: '', turma_nome: '', data: new Date().toISOString().slice(0, 10), status: 'Presente', observacao: '' }); },
-                  idEdicaoFrequencia ? 'Frequência atualizada!' : 'Frequência registrada!'
-                )}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}
-              >
-                <div><label>Nome do Aluno:</label><input type="text" value={formFrequencia.aluno_nome} onChange={(e) => setFormFrequencia({ ...formFrequencia, aluno_nome: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div><label>Turma:</label><input type="text" value={formFrequencia.turma_nome} onChange={(e) => setFormFrequencia({ ...formFrequencia, turma_nome: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div><label>Data:</label><input type="date" value={formFrequencia.data} onChange={(e) => setFormFrequencia({ ...formFrequencia, data: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div>
-                  <label>Status:</label>
-                  <select value={formFrequencia.status} onChange={(e) => setFormFrequencia({ ...formFrequencia, status: e.target.value })} style={{ width: '100%', padding: '8px' }}>
-                    <option value="Presente">Presente</option>
-                    <option value="Falta">Falta</option>
-                    <option value="Falta Justificada">Falta Justificada</option>
-                  </select>
-                </div>
-                <div style={{ gridColumn: 'span 2' }}><label>Observação (opcional):</label><input type="text" value={formFrequencia.observacao} onChange={(e) => setFormFrequencia({ ...formFrequencia, observacao: e.target.value })} style={{ width: '100%', padding: '8px' }} /></div>
-                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
-                  <button type="submit" style={{ padding: '10px 20px', background: idEdicaoFrequencia ? '#28a745' : '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{idEdicaoFrequencia ? 'Atualizar Registro' : 'Salvar Chamada'}</button>
-                  {idEdicaoFrequencia && <button type="button" onClick={() => { setIdEdicaoFrequencia(null); setFormFrequencia({ aluno_nome: '', turma_nome: '', data: new Date().toISOString().slice(0, 10), status: 'Presente', observacao: '' }); }} style={{ padding: '10px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancelar</button>}
-                </div>
-              </form>
-            </section>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0 }}>✅ Histórico de Frequência</h3>
-            <input type="text" placeholder="🔍 Buscar por aluno, turma ou status..." value={buscaFrequencia} onChange={(e) => setBuscaFrequencia(e.target.value)} style={{ padding: '8px 12px', width: '280px', borderRadius: '4px', border: '1px solid #ccc' }} />
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#eee' }}>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Data</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Aluno</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Turma</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Status</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Observação</th>
-                {credenciais.perfil === 'professor' && <th style={{ padding: '8px', border: '1px solid #ddd' }}>Ações</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {frequencias.map((f) => (
-                <tr key={f.id}>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{formatarDataBR(f.data)}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{f.aluno_nome}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{f.turma_nome}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd', fontWeight: 'bold', color: f.status === 'Presente' ? '#1e7e34' : '#dc3545' }}>{f.status}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{f.observacao || '-'}</td>
-                  {credenciais.perfil === 'professor' && (
-                    <td style={{ padding: '8px', border: '1px solid #ddd', display: 'flex', gap: '5px' }}>
-                      <button onClick={() => { setIdEdicaoFrequencia(f.id); setFormFrequencia({ aluno_nome: f.aluno_nome, turma_nome: f.turma_nome, data: f.data, status: f.status, observacao: f.observacao || '' }); }} style={{ padding: '4px 8px', background: '#ffc107', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Editar</button>
-                      <button onClick={() => excluirRegistro('frequencias', f.id, 'Excluir este registro?', 'Registro excluído com sucesso!')} style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Excluir</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-
-      {/* ==================== 5. ABA COMUNICADOS ==================== */}
-      {abaAtiva === 'comunicados' && (
-        <>
-          {credenciais.perfil === 'professor' && (
-            <section style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '25px' }}>
-              <h3>{idEdicaoComunicado ? '✏️ Editar Comunicado' : '➕ Publicar Novo Comunicado'}</h3>
-              <form
-                onSubmit={(e) => salvarRegistro(
-                  e, 'comunicados', idEdicaoComunicado, formComunicado,
-                  () => { setIdEdicaoComunicado(null); setFormComunicado({ titulo: '', categoria: 'Aviso Geral', mensagem: '', data_publicacao: new Date().toISOString().slice(0, 10) }); },
-                  idEdicaoComunicado ? 'Comunicado atualizado!' : 'Comunicado publicado com sucesso!'
-                )}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}
-              >
-                <div><label>Título do Aviso:</label><input type="text" value={formComunicado.titulo} onChange={(e) => setFormComunicado({ ...formComunicado, titulo: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div>
-                  <label>Categoria:</label>
-                  <select value={formComunicado.categoria} onChange={(e) => setFormComunicado({ ...formComunicado, categoria: e.target.value })} style={{ width: '100%', padding: '8px' }}>
-                    <option value="Aviso Geral">Aviso Geral</option>
-                    <option value="Evento Escolar">Evento Escolar</option>
-                    <option value="Reunião de Pais">Reunião de Pais</option>
-                    <option value="Urgente">Urgente</option>
-                  </select>
-                </div>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label>Mensagem:</label>
-                  <textarea rows="3" value={formComunicado.mensagem} onChange={(e) => setFormComunicado({ ...formComunicado, mensagem: e.target.value })} required style={{ width: '100%', padding: '8px' }} />
-                </div>
-                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
-                  <button type="submit" style={{ padding: '10px 20px', background: idEdicaoComunicado ? '#28a745' : '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{idEdicaoComunicado ? 'Atualizar Comunicado' : 'Publicar Comunicado'}</button>
-                  {idEdicaoComunicado && <button type="button" onClick={() => { setIdEdicaoComunicado(null); setFormComunicado({ titulo: '', categoria: 'Aviso Geral', mensagem: '', data_publicacao: new Date().toISOString().slice(0, 10) }); }} style={{ padding: '10px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancelar</button>}
-                </div>
-              </form>
-            </section>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0 }}>📢 Mural de Comunicados para Pais e Professores</h3>
-            <input type="text" placeholder="🔍 Buscar comunicado..." value={buscaComunicado} onChange={(e) => setBuscaComunicado(e.target.value)} style={{ padding: '8px 12px', width: '280px', borderRadius: '4px', border: '1px solid #ccc' }} />
-          </div>
-
-          <div style={{ display: 'grid', gap: '12px' }}>
-            {comunicados.map((c) => (
-              <div key={c.id} style={{ border: '1px solid #ddd', borderLeft: c.categoria === 'Urgente' ? '5px solid #dc3545' : '5px solid #007bff', padding: '15px', borderRadius: '6px', background: '#fff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <span style={{ fontSize: '12px', background: '#eee', padding: '3px 8px', borderRadius: '4px', marginRight: '8px' }}>{c.categoria}</span>
-                    <strong>{c.titulo}</strong>
-                  </div>
-                  <span style={{ fontSize: '12px', color: '#666' }}>{formatarDataBR(c.data_publicacao)}</span>
-                </div>
-                <p style={{ margin: '10px 0', color: '#333' }}>{c.mensagem}</p>
-                {credenciais.perfil === 'professor' && (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => { setIdEdicaoComunicado(c.id); setFormComunicado({ titulo: c.titulo, categoria: c.categoria, mensagem: c.mensagem, data_publicacao: c.data_publicacao }); }} style={{ padding: '4px 10px', background: '#ffc107', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Editar</button>
-                    <button onClick={() => excluirRegistro('comunicados', c.id, 'Excluir este comunicado?', 'Comunicado excluído com sucesso!')} style={{ padding: '4px 10px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Excluir</button>
-                  </div>
-                )}
+                <button
+                  onClick={exportarCSV}
+                  style={{
+                    background: '#090d16',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '10px 18px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  ⬇ Exportar CSV
+                </button>
               </div>
-            ))}
-          </div>
-        </>
-      )}
 
-      {/* ==================== 6. ABA AGENDA DIÁRIA ==================== */}
-      {abaAtiva === 'agenda' && (
-        <>
-          {credenciais.perfil === 'professor' && (
-            <section style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '25px' }}>
-              <h3>{idEdicaoAgenda ? '✏️ Editar Diário do Aluno' : '➕ Registrar Agenda Diária'}</h3>
-              <form
-                onSubmit={(e) => salvarRegistro(
-                  e, 'agenda', idEdicaoAgenda, formAgenda,
-                  () => { setIdEdicaoAgenda(null); setFormAgenda({ aluno_nome: '', data: new Date().toISOString().slice(0, 10), alimentacao: 'Comeu tudo', sono: 'Dormiu bem (1h30)', humor: 'Alegre / Participativo', observacao: '' }); },
-                  idEdicaoAgenda ? 'Agenda atualizada com sucesso!' : 'Registro adicionado na agenda diária!'
-                )}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}
-              >
-                <div><label>Nome do Aluno:</label><input type="text" value={formAgenda.aluno_nome} onChange={(e) => setFormAgenda({ ...formAgenda, aluno_nome: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div><label>Data:</label><input type="date" value={formAgenda.data} onChange={(e) => setFormAgenda({ ...formAgenda, data: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
-                <div>
-                  <label>Alimentação:</label>
-                  <select value={formAgenda.alimentacao} onChange={(e) => setFormAgenda({ ...formAgenda, alimentacao: e.target.value })} style={{ width: '100%', padding: '8px' }}>
-                    <option value="Comeu tudo">Comeu tudo</option>
-                    <option value="Comeu parcialmente">Comeu parcialmente</option>
-                    <option value="Recusou a refeição">Recusou a refeição</option>
-                  </select>
+              {/* 5 Cards de Indicadores (KPIs) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '28px' }}>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                  <div style={{ fontSize: '26px', fontWeight: '700', color: '#0f172a' }}>{relatorio.resumo.total}</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Total de Registros</div>
                 </div>
-                <div>
-                  <label>Sono / Descanso:</label>
-                  <select value={formAgenda.sono} onChange={(e) => setFormAgenda({ ...formAgenda, sono: e.target.value })} style={{ width: '100%', padding: '8px' }}>
-                    <option value="Dormiu bem (1h30)">Dormiu bem (1h30)</option>
-                    <option value="Soneca rápida (30min)">Soneca rápida (30min)</option>
-                    <option value="Não dormiu">Não dormiu</option>
-                  </select>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                  <div style={{ fontSize: '26px', fontWeight: '700', color: '#16a34a' }}>{relatorio.resumo.presentes}</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Presentes</div>
                 </div>
-                <div>
-                  <label>Humor / Comportamento:</label>
-                  <select value={formAgenda.humor} onChange={(e) => setFormAgenda({ ...formAgenda, humor: e.target.value })} style={{ width: '100%', padding: '8px' }}>
-                    <option value="Alegre / Participativo">Alegre / Participativo</option>
-                    <option value="Calmo / Tranquilo">Calmo / Tranquilo</option>
-                    <option value="Agitado / Choroso">Agitado / Choroso</option>
-                  </select>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                  <div style={{ fontSize: '26px', fontWeight: '700', color: '#ef4444' }}>{relatorio.resumo.ausentes}</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Ausentes</div>
                 </div>
-                <div><label>Atividades / Observações:</label><input type="text" placeholder="Ex: Pintura com guache, brincou no parque..." value={formAgenda.observacao} onChange={(e) => setFormAgenda({ ...formAgenda, observacao: e.target.value })} style={{ width: '100%', padding: '8px' }} /></div>
-                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
-                  <button type="submit" style={{ padding: '10px 20px', background: idEdicaoAgenda ? '#28a745' : '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{idEdicaoAgenda ? 'Atualizar Agenda' : 'Salvar na Agenda'}</button>
-                  {idEdicaoAgenda && <button type="button" onClick={() => { setIdEdicaoAgenda(null); setFormAgenda({ aluno_nome: '', data: new Date().toISOString().slice(0, 10), alimentacao: 'Comeu tudo', sono: 'Dormiu bem (1h30)', humor: 'Alegre / Participativo', observacao: '' }); }} style={{ padding: '10px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancelar</button>}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                  <div style={{ fontSize: '26px', fontWeight: '700', color: '#d97706' }}>{relatorio.resumo.justificados}</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Justificados</div>
                 </div>
-              </form>
-            </section>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                  <div style={{ fontSize: '26px', fontWeight: '700', color: '#2563eb' }}>{relatorio.resumo.taxa_presenca}%</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Taxa de Presença</div>
+                </div>
+              </div>
+
+              {/* Barra de Filtros */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>⧩ Filtros</span>
+                  <button
+                    onClick={() => setFiltrosRelatorio({ aluno: '', status: 'Todos', turma: 'Todas', data: '' })}
+                    style={{ background: 'transparent', border: 'none', color: '#0f172a', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                  >
+                    Limpar Filtros
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>Buscar Aluno</label>
+                    <input
+                      type="text"
+                      placeholder="🔍 Digite o nome..."
+                      value={filtrosRelatorio.aluno}
+                      onChange={(e) => setFiltrosRelatorio({ ...filtrosRelatorio, aluno: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>Status</label>
+                    <select
+                      value={filtrosRelatorio.status}
+                      onChange={(e) => setFiltrosRelatorio({ ...filtrosRelatorio, status: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc' }}
+                    >
+                      <option value="Todos">Todos</option>
+                      <option value="Presente">Presente</option>
+                      <option value="Falta">Ausente (Falta)</option>
+                      <option value="Falta Justificada">Justificado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>Turma / Série</label>
+                    <select
+                      value={filtrosRelatorio.turma}
+                      onChange={(e) => setFiltrosRelatorio({ ...filtrosRelatorio, turma: e.target.value })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc' }}
+                    >
+                      <option value="Todas">Todas</option>
+                      {turmasUnicas.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>Data</label>
+                    <input
+                      type="date"
+                      value={filtrosRelatorio.data}
+                      onChange={(e) => setFiltrosRelatorio({ ...filtrosRelatorio, data: e.target.value })}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabela Estilizada */}
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+                      <th style={{ padding: '14px 16px', fontWeight: '600', color: '#0f172a' }}>Aluno</th>
+                      <th style={{ padding: '14px 16px', fontWeight: '600', color: '#0f172a' }}>Data</th>
+                      <th style={{ padding: '14px 16px', fontWeight: '600', color: '#0f172a' }}>Turma</th>
+                      <th style={{ padding: '14px 16px', fontWeight: '600', color: '#0f172a' }}>Observação</th>
+                      <th style={{ padding: '14px 16px', fontWeight: '600', color: '#0f172a' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relatorio.registros.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                          Nenhum registro de frequência encontrado para os filtros selecionados.
+                        </td>
+                      </tr>
+                    ) : (
+                      relatorio.registros.map((r) => (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 16px', fontWeight: '600', color: '#0f172a' }}>{r.aluno_nome}</td>
+                          <td style={{ padding: '14px 16px', color: '#334155' }}>{formatarDataBR(r.data)}</td>
+                          <td style={{ padding: '14px 16px', color: '#334155' }}>{r.turma_nome}</td>
+                          <td style={{ padding: '14px 16px', color: '#64748b' }}>{r.observacao || 'Rotina Regular'}</td>
+                          <td style={{ padding: '14px 16px' }}>{renderBadgeStatus(r.status)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0 }}>📔 Rotina Diária dos Alunos</h3>
-            <input type="text" placeholder="🔍 Buscar por aluno ou humor..." value={buscaAgenda} onChange={(e) => setBuscaAgenda(e.target.value)} style={{ padding: '8px 12px', width: '280px', borderRadius: '4px', border: '1px solid #ccc' }} />
-          </div>
+          {/* ==================== TELA: DASHBOARD ==================== */}
+          {abaAtiva === 'dashboard' && (
+            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
+              <h2 style={{ marginTop: 0 }}>Visão Geral da Escola</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#2563eb' }}>{stats.alunos}</div>
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>Alunos Matriculados</div>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#d97706' }}>{stats.turmas}</div>
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>Turmas Ativas</div>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#7c3aed' }}>{stats.professores}</div>
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>Professores</div>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#16a34a' }}>{stats.presenca}%</div>
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>Frequência Média</div>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#ef4444' }}>{stats.comunicados}</div>
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>Comunicados Publicados</div>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#0891b2' }}>{stats.agenda}</div>
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>Registros na Agenda Diária</div>
+                </div>
+              </div>
+            </div>
+          )}
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#eee' }}>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Data</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Aluno</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Alimentação</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Sono</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Humor</th>
-                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Observações</th>
-                {credenciais.perfil === 'professor' && <th style={{ padding: '8px', border: '1px solid #ddd' }}>Ações</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {agenda.map((item) => (
-                <tr key={item.id}>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{formatarDataBR(item.data)}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}><strong>{item.aluno_nome}</strong></td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.alimentacao}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.sono}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.humor}</td>
-                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.observacao || '-'}</td>
-                  {credenciais.perfil === 'professor' && (
-                    <td style={{ padding: '8px', border: '1px solid #ddd', display: 'flex', gap: '5px' }}>
-                      <button onClick={() => { setIdEdicaoAgenda(item.id); setFormAgenda({ aluno_nome: item.aluno_nome, data: item.data, alimentacao: item.alimentacao, sono: item.sono, humor: item.humor, observacao: item.observacao || '' }); }} style={{ padding: '4px 8px', background: '#ffc107', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Editar</button>
-                      <button onClick={() => excluirRegistro('agenda', item.id, 'Remover este registro da agenda?', 'Registro removido!')} style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Excluir</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+          {/* ==================== TELA: ALUNOS ==================== */}
+          {abaAtiva === 'alunos' && (
+            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
+              {credenciais.perfil === 'professor' && (
+                <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+                  <h3 style={{ marginTop: 0 }}>{idEdicaoAluno ? 'Editar Aluno' : 'Cadastrar Novo Aluno'}</h3>
+                  <form
+                    onSubmit={(e) => salvarRegistro(
+                      e, 'alunos', idEdicaoAluno, formAluno,
+                      () => { setIdEdicaoAluno(null); setFormAluno({ nome: '', data_nascimento: '', responsavel: '', telefone: '', email: '' }); },
+                      idEdicaoAluno ? 'Aluno atualizado com sucesso!' : 'Aluno cadastrado com sucesso!'
+                    )}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
+                  >
+                    <div><label>Nome Completo:</label><input type="text" value={formAluno.nome} onChange={(e) => setFormAluno({ ...formAluno, nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Data de Nascimento:</label><input type="date" value={formAluno.data_nascimento} onChange={(e) => setFormAluno({ ...formAluno, data_nascimento: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Nome do Responsável:</label><input type="text" value={formAluno.responsavel} onChange={(e) => setFormAluno({ ...formAluno, responsavel: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Telefone:</label><input type="text" value={formAluno.telefone} onChange={(e) => setFormAluno({ ...formAluno, telefone: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 2' }}><label>E-mail (opcional):</label><input type="email" value={formAluno.email} onChange={(e) => setFormAluno({ ...formAluno, email: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
+                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{idEdicaoAluno ? 'Atualizar Aluno' : 'Salvar Aluno'}</button>
+                      {idEdicaoAluno && <button type="button" onClick={() => { setIdEdicaoAluno(null); setFormAluno({ nome: '', data_nascimento: '', responsavel: '', telefone: '', email: '' }); }} style={{ padding: '10px 18px', background: '#64748b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>}
+                    </div>
+                  </form>
+                </section>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h3 style={{ margin: 0 }}>Alunos Cadastrados</h3>
+                <input type="text" placeholder="🔍 Buscar aluno..." value={buscaAluno} onChange={(e) => setBuscaAluno(e.target.value)} style={{ padding: '8px 12px', width: '260px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+              </div>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px' }}>Nome</th>
+                    <th style={{ padding: '12px' }}>Nascimento</th>
+                    <th style={{ padding: '12px' }}>Responsável</th>
+                    <th style={{ padding: '12px' }}>Telefone</th>
+                    {credenciais.perfil === 'professor' && <th style={{ padding: '12px' }}>Ações</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {alunos.map((a) => (
+                    <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px', fontWeight: '600' }}>{a.nome}</td>
+                      <td style={{ padding: '12px' }}>{formatarDataBR(a.data_nascimento)}</td>
+                      <td style={{ padding: '12px' }}>{a.responsavel}</td>
+                      <td style={{ padding: '12px' }}>{a.telefone}</td>
+                      {credenciais.perfil === 'professor' && (
+                        <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
+                          <button onClick={() => { setIdEdicaoAluno(a.id); setFormAluno({ nome: a.nome, data_nascimento: a.data_nascimento, responsavel: a.responsavel, telefone: a.telefone, email: a.email || '' }); }} style={{ padding: '5px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Editar</button>
+                          <button onClick={() => excluirRegistro('alunos', a.id, 'Excluir este aluno?', 'Aluno excluído!')} style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Excluir</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ==================== TELA: TURMAS ==================== */}
+          {abaAtiva === 'turmas' && (
+            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
+              {credenciais.perfil === 'professor' && (
+                <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+                  <h3 style={{ marginTop: 0 }}>{idEdicaoTurma ? 'Editar Turma' : 'Cadastrar Nova Turma'}</h3>
+                  <form
+                    onSubmit={(e) => salvarRegistro(
+                      e, 'turmas', idEdicaoTurma, { ...formTurma, capacidade: Number(formTurma.capacidade) },
+                      () => { setIdEdicaoTurma(null); setFormTurma({ nome: '', turno: 'Matutino', faixa_etaria: '', professor: '', capacidade: '' }); },
+                      idEdicaoTurma ? 'Turma atualizada!' : 'Turma cadastrada!'
+                    )}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
+                  >
+                    <div><label>Nome da Turma:</label><input type="text" value={formTurma.nome} onChange={(e) => setFormTurma({ ...formTurma, nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div>
+                      <label>Turno:</label>
+                      <select value={formTurma.turno} onChange={(e) => setFormTurma({ ...formTurma, turno: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                        <option value="Matutino">Matutino</option>
+                        <option value="Vespertino">Vespertino</option>
+                        <option value="Integral">Integral</option>
+                      </select>
+                    </div>
+                    <div><label>Faixa Etária:</label><input type="text" value={formTurma.faixa_etaria} onChange={(e) => setFormTurma({ ...formTurma, faixa_etaria: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Professor:</label><input type="text" value={formTurma.professor} onChange={(e) => setFormTurma({ ...formTurma, professor: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 2' }}><label>Capacidade:</label><input type="number" min="1" value={formTurma.capacidade} onChange={(e) => setFormTurma({ ...formTurma, capacidade: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
+                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{idEdicaoTurma ? 'Atualizar Turma' : 'Salvar Turma'}</button>
+                      {idEdicaoTurma && <button type="button" onClick={() => { setIdEdicaoTurma(null); setFormTurma({ nome: '', turno: 'Matutino', faixa_etaria: '', professor: '', capacidade: '' }); }} style={{ padding: '10px 18px', background: '#64748b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>}
+                    </div>
+                  </form>
+                </section>
+              )}
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px' }}>Turma</th>
+                    <th style={{ padding: '12px' }}>Turno</th>
+                    <th style={{ padding: '12px' }}>Faixa Etária</th>
+                    <th style={{ padding: '12px' }}>Professor</th>
+                    <th style={{ padding: '12px' }}>Vagas</th>
+                    {credenciais.perfil === 'professor' && <th style={{ padding: '12px' }}>Ações</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {turmas.map((t) => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px', fontWeight: '600' }}>{t.nome}</td>
+                      <td style={{ padding: '12px' }}>{t.turno}</td>
+                      <td style={{ padding: '12px' }}>{t.faixa_etaria}</td>
+                      <td style={{ padding: '12px' }}>{t.professor}</td>
+                      <td style={{ padding: '12px' }}>{t.capacidade}</td>
+                      {credenciais.perfil === 'professor' && (
+                        <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
+                          <button onClick={() => { setIdEdicaoTurma(t.id); setFormTurma({ nome: t.nome, turno: t.turno, faixa_etaria: t.faixa_etaria, professor: t.professor, capacidade: t.capacidade }); }} style={{ padding: '5px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Editar</button>
+                          <button onClick={() => excluirRegistro('turmas', t.id, 'Excluir esta turma?', 'Turma excluída!')} style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Excluir</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ==================== TELA: PROFESSORES ==================== */}
+          {abaAtiva === 'professores' && (
+            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
+              {credenciais.perfil === 'professor' && (
+                <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+                  <h3 style={{ marginTop: 0 }}>{idEdicaoProfessor ? 'Editar Professor' : 'Cadastrar Novo Professor'}</h3>
+                  <form
+                    onSubmit={(e) => salvarRegistro(
+                      e, 'professores', idEdicaoProfessor, formProfessor,
+                      () => { setIdEdicaoProfessor(null); setFormProfessor({ nome: '', formacao: '', turno: 'Matutino', telefone: '', email: '' }); },
+                      idEdicaoProfessor ? 'Professor atualizado!' : 'Professor cadastrado!'
+                    )}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
+                  >
+                    <div><label>Nome:</label><input type="text" value={formProfessor.nome} onChange={(e) => setFormProfessor({ ...formProfessor, nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Formação:</label><input type="text" value={formProfessor.formacao} onChange={(e) => setFormProfessor({ ...formProfessor, formacao: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div>
+                      <label>Turno:</label>
+                      <select value={formProfessor.turno} onChange={(e) => setFormProfessor({ ...formProfessor, turno: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                        <option value="Matutino">Matutino</option>
+                        <option value="Vespertino">Vespertino</option>
+                        <option value="Integral">Integral</option>
+                      </select>
+                    </div>
+                    <div><label>Telefone:</label><input type="text" value={formProfessor.telefone} onChange={(e) => setFormProfessor({ ...formProfessor, telefone: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
+                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{idEdicaoProfessor ? 'Atualizar Professor' : 'Salvar Professor'}</button>
+                    </div>
+                  </form>
+                </section>
+              )}
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px' }}>Nome</th>
+                    <th style={{ padding: '12px' }}>Formação</th>
+                    <th style={{ padding: '12px' }}>Turno</th>
+                    <th style={{ padding: '12px' }}>Telefone</th>
+                    {credenciais.perfil === 'professor' && <th style={{ padding: '12px' }}>Ações</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {professores.map((p) => (
+                    <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px', fontWeight: '600' }}>{p.nome}</td>
+                      <td style={{ padding: '12px' }}>{p.formacao}</td>
+                      <td style={{ padding: '12px' }}>{p.turno}</td>
+                      <td style={{ padding: '12px' }}>{p.telefone}</td>
+                      {credenciais.perfil === 'professor' && (
+                        <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
+                          <button onClick={() => { setIdEdicaoProfessor(p.id); setFormProfessor({ nome: p.nome, formacao: p.formacao, turno: p.turno, telefone: p.telefone, email: p.email || '' }); }} style={{ padding: '5px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Editar</button>
+                          <button onClick={() => excluirRegistro('professores', p.id, 'Excluir este professor?', 'Professor excluído!')} style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Excluir</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ==================== TELA: FREQUÊNCIA ==================== */}
+          {abaAtiva === 'frequencias' && (
+            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
+              {credenciais.perfil === 'professor' && (
+                <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+                  <h3 style={{ marginTop: 0 }}>{idEdicaoFrequencia ? 'Editar Chamada' : 'Registrar Chamada Diária'}</h3>
+                  <form
+                    onSubmit={(e) => salvarRegistro(
+                      e, 'frequencias', idEdicaoFrequencia, formFrequencia,
+                      () => { setIdEdicaoFrequencia(null); setFormFrequencia({ aluno_nome: '', turma_nome: '', data: new Date().toISOString().slice(0, 10), status: 'Presente', observacao: '' }); },
+                      idEdicaoFrequencia ? 'Frequência atualizada!' : 'Frequência registrada!'
+                    )}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
+                  >
+                    <div><label>Aluno:</label><input type="text" value={formFrequencia.aluno_nome} onChange={(e) => setFormFrequencia({ ...formFrequencia, aluno_nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Turma:</label><input type="text" value={formFrequencia.turma_nome} onChange={(e) => setFormFrequencia({ ...formFrequencia, turma_nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Data:</label><input type="date" value={formFrequencia.data} onChange={(e) => setFormFrequencia({ ...formFrequencia, data: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div>
+                      <label>Status:</label>
+                      <select value={formFrequencia.status} onChange={(e) => setFormFrequencia({ ...formFrequencia, status: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                        <option value="Presente">Presente</option>
+                        <option value="Falta">Ausente (Falta)</option>
+                        <option value="Falta Justificada">Justificado</option>
+                      </select>
+                    </div>
+                    <div style={{ gridColumn: 'span 2' }}><label>Observação:</label><input type="text" value={formFrequencia.observacao} onChange={(e) => setFormFrequencia({ ...formFrequencia, observacao: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
+                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{idEdicaoFrequencia ? 'Atualizar Chamada' : 'Salvar Chamada'}</button>
+                    </div>
+                  </form>
+                </section>
+              )}
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px' }}>Aluno</th>
+                    <th style={{ padding: '12px' }}>Data</th>
+                    <th style={{ padding: '12px' }}>Turma</th>
+                    <th style={{ padding: '12px' }}>Status</th>
+                    {credenciais.perfil === 'professor' && <th style={{ padding: '12px' }}>Ações</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {frequencias.map((f) => (
+                    <tr key={f.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px', fontWeight: '600' }}>{f.aluno_nome}</td>
+                      <td style={{ padding: '12px' }}>{formatarDataBR(f.data)}</td>
+                      <td style={{ padding: '12px' }}>{f.turma_nome}</td>
+                      <td style={{ padding: '12px' }}>{renderBadgeStatus(f.status)}</td>
+                      {credenciais.perfil === 'professor' && (
+                        <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
+                          <button onClick={() => { setIdEdicaoFrequencia(f.id); setFormFrequencia({ aluno_nome: f.aluno_nome, turma_nome: f.turma_nome, data: f.data, status: f.status, observacao: f.observacao || '' }); }} style={{ padding: '5px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Editar</button>
+                          <button onClick={() => excluirRegistro('frequencias', f.id, 'Excluir registro?', 'Excluído!')} style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Excluir</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ==================== TELA: AGENDA DIÁRIA ==================== */}
+          {abaAtiva === 'agenda' && (
+            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
+              {credenciais.perfil === 'professor' && (
+                <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+                  <h3 style={{ marginTop: 0 }}>{idEdicaoAgenda ? 'Editar Agenda Diária' : 'Registrar Rotina da Criança'}</h3>
+                  <form
+                    onSubmit={(e) => salvarRegistro(
+                      e, 'agenda', idEdicaoAgenda, formAgenda,
+                      () => { setIdEdicaoAgenda(null); setFormAgenda({ aluno_nome: '', data: new Date().toISOString().slice(0, 10), alimentacao: 'Comeu tudo', sono: 'Dormiu bem (1h30)', humor: 'Alegre / Participativo', observacao: '' }); },
+                      idEdicaoAgenda ? 'Agenda atualizada!' : 'Agenda salva!'
+                    )}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
+                  >
+                    <div><label>Aluno:</label><input type="text" value={formAgenda.aluno_nome} onChange={(e) => setFormAgenda({ ...formAgenda, aluno_nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Data:</label><input type="date" value={formAgenda.data} onChange={(e) => setFormAgenda({ ...formAgenda, data: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div>
+                      <label>Alimentação:</label>
+                      <select value={formAgenda.alimentacao} onChange={(e) => setFormAgenda({ ...formAgenda, alimentacao: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                        <option value="Comeu tudo">Comeu tudo</option>
+                        <option value="Comeu parcialmente">Comeu parcialmente</option>
+                        <option value="Recusou a refeição">Recusou a refeição</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>Sono:</label>
+                      <select value={formAgenda.sono} onChange={(e) => setFormAgenda({ ...formAgenda, sono: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                        <option value="Dormiu bem (1h30)">Dormiu bem (1h30)</option>
+                        <option value="Soneca rápida (30min)">Soneca rápida (30min)</option>
+                        <option value="Não dormiu">Não dormiu</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>Humor:</label>
+                      <select value={formAgenda.humor} onChange={(e) => setFormAgenda({ ...formAgenda, humor: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                        <option value="Alegre / Participativo">Alegre / Participativo</option>
+                        <option value="Calmo / Tranquilo">Calmo / Tranquilo</option>
+                        <option value="Agitado / Choroso">Agitado / Choroso</option>
+                      </select>
+                    </div>
+                    <div><label>Observações:</label><input type="text" value={formAgenda.observacao} onChange={(e) => setFormAgenda({ ...formAgenda, observacao: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>Salvar na Agenda</button>
+                    </div>
+                  </form>
+                </section>
+              )}
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px' }}>Data</th>
+                    <th style={{ padding: '12px' }}>Aluno</th>
+                    <th style={{ padding: '12px' }}>Alimentação</th>
+                    <th style={{ padding: '12px' }}>Sono</th>
+                    <th style={{ padding: '12px' }}>Humor</th>
+                    <th style={{ padding: '12px' }}>Observações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agenda.map((item) => (
+                    <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px' }}>{formatarDataBR(item.data)}</td>
+                      <td style={{ padding: '12px', fontWeight: '600' }}>{item.aluno_nome}</td>
+                      <td style={{ padding: '12px' }}>{item.alimentacao}</td>
+                      <td style={{ padding: '12px' }}>{item.sono}</td>
+                      <td style={{ padding: '12px' }}>{item.humor}</td>
+                      <td style={{ padding: '12px' }}>{item.observacao || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ==================== TELA: COMUNICADOS ==================== */}
+          {abaAtiva === 'comunicados' && (
+            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
+              {credenciais.perfil === 'professor' && (
+                <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+                  <h3 style={{ marginTop: 0 }}>Publicar Comunicado</h3>
+                  <form
+                    onSubmit={(e) => salvarRegistro(
+                      e, 'comunicados', idEdicaoComunicado, formComunicado,
+                      () => { setIdEdicaoComunicado(null); setFormComunicado({ titulo: '', categoria: 'Aviso Geral', mensagem: '', data_publicacao: new Date().toISOString().slice(0, 10) }); },
+                      'Comunicado publicado!'
+                    )}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
+                  >
+                    <div><label>Título:</label><input type="text" value={formComunicado.titulo} onChange={(e) => setFormComunicado({ ...formComunicado, titulo: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div>
+                      <label>Categoria:</label>
+                      <select value={formComunicado.categoria} onChange={(e) => setFormComunicado({ ...formComunicado, categoria: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                        <option value="Aviso Geral">Aviso Geral</option>
+                        <option value="Evento Escolar">Evento Escolar</option>
+                        <option value="Reunião de Pais">Reunião de Pais</option>
+                        <option value="Urgente">Urgente</option>
+                      </select>
+                    </div>
+                    <div style={{ gridColumn: 'span 2' }}><label>Mensagem:</label><textarea rows="3" value={formComunicado.mensagem} onChange={(e) => setFormComunicado({ ...formComunicado, mensagem: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>Publicar</button>
+                    </div>
+                  </form>
+                </section>
+              )}
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {comunicados.map((c) => (
+                  <div key={c.id} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <strong>{c.titulo} <span style={{ fontSize: '12px', color: '#64748b' }}>({c.categoria})</span></strong>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>{formatarDataBR(c.data_publicacao)}</span>
+                    </div>
+                    <p style={{ margin: '8px 0 0 0', color: '#334155' }}>{c.mensagem}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
