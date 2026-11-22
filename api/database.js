@@ -78,6 +78,18 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS agenda_diaria (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    aluno_nome TEXT NOT NULL,
+    data TEXT NOT NULL,
+    alimentacao TEXT NOT NULL,
+    sono TEXT NOT NULL,
+    humor TEXT NOT NULL,
+    observacao TEXT
+  )
+`);
+
 fs.writeFileSync(
   dbPath,
   Buffer.from(db.export())
