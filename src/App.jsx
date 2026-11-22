@@ -5,7 +5,7 @@ const API_BASE = 'http://localhost:3000';
 export default function App() {
   const [logado, setLogado] = useState(false);
   const [credenciais, setCredenciais] = useState({ usuario: '', senha: '', perfil: 'professor' });
-  const [abaAtiva, setAbaAtiva] = useState('alunos'); // 'alunos' | 'turmas' | 'professores' | 'frequencias' | 'comunicados'
+  const [abaAtiva, setAbaAtiva] = useState('alunos'); // 'alunos' | 'turmas' | 'professores' | 'frequencias' | 'comunicados' | 'agenda'
 
   // Resumo / Estatísticas
   const [stats, setStats] = useState({
@@ -13,7 +13,8 @@ export default function App() {
     turmas: 0,
     professores: 0,
     presenca: 100,
-    comunicados: 0
+    comunicados: 0,
+    agenda: 0
   });
 
   // Estados Alunos
@@ -57,6 +58,19 @@ export default function App() {
     data_publicacao: new Date().toISOString().slice(0, 10)
   });
 
+  // Estados Agenda Diária
+  const [agenda, setAgenda] = useState([]);
+  const [buscaAgenda, setBuscaAgenda] = useState('');
+  const [idEdicaoAgenda, setIdEdicaoAgenda] = useState(null);
+  const [formAgenda, setFormAgenda] = useState({
+    aluno_nome: '',
+    data: new Date().toISOString().slice(0, 10),
+    alimentacao: 'Comeu tudo',
+    sono: 'Dormiu bem (1h30)',
+    humor: 'Alegre / Participativo',
+    observacao: ''
+  });
+
   const [mensagem, setMensagem] = useState({ texto: '', tipo: '' });
 
   const carregarTudo = async () => {
@@ -66,7 +80,8 @@ export default function App() {
         resTurmas, statTurmas,
         resProfs, statProfs,
         resFreqs, statFreqs,
-        resComs, statComs
+        resComs, statComs,
+        resAgenda, statAgenda
       ] = await Promise.all([
         fetch(buscaAluno.trim() ? `${API_BASE}/alunos?busca=${encodeURIComponent(buscaAluno)}` : `${API_BASE}/alunos`),
         fetch(`${API_BASE}/alunos/estatisticas`),
@@ -77,15 +92,25 @@ export default function App() {
         fetch(buscaFrequencia.trim() ? `${API_BASE}/frequencias?busca=${encodeURIComponent(buscaFrequencia)}` : `${API_BASE}/frequencias`),
         fetch(`${API_BASE}/frequencias/estatisticas`),
         fetch(buscaComunicado.trim() ? `${API_BASE}/comunicados?busca=${encodeURIComponent(buscaComunicado)}` : `${API_BASE}/comunicados`),
-        fetch(`${API_BASE}/comunicados/estatisticas`)
+        fetch(`${API_BASE}/comunicados/estatisticas`),
+        fetch(buscaAgenda.trim() ? `${API_BASE}/agenda?busca=${encodeURIComponent(buscaAgenda)}` : `${API_BASE}/agenda`),
+        fetch(`${API_BASE}/agenda/estatisticas`)
       ]);
 
-      const [dAlunos, sAlunos, dTurmas, sTurmas, dProfs, sProfs, dFreqs, sFreqs, dComs, sComs] = await Promise.all([
+      const [
+        dAlunos, sAlunos,
+        dTurmas, sTurmas,
+        dProfs, sProfs,
+        dFreqs, sFreqs,
+        dComs, sComs,
+        dAgenda, sAgenda
+      ] = await Promise.all([
         resAlunos.json(), statAlunos.json(),
         resTurmas.json(), statTurmas.json(),
         resProfs.json(), statProfs.json(),
         resFreqs.json(), statFreqs.json(),
-        resComs.json(), statComs.json()
+        resComs.json(), statComs.json(),
+        resAgenda.json(), statAgenda.json()
       ]);
 
       if (Array.isArray(dAlunos)) setAlunos(dAlunos);
@@ -93,13 +118,15 @@ export default function App() {
       if (Array.isArray(dProfs)) setProfessores(dProfs);
       if (Array.isArray(dFreqs)) setFrequencias(dFreqs);
       if (Array.isArray(dComs)) setComunicados(dComs);
+      if (Array.isArray(dAgenda)) setAgenda(dAgenda);
 
       setStats({
         alunos: sAlunos.total_alunos || 0,
         turmas: sTurmas.total_turmas || 0,
         professores: sProfs.total_professores || 0,
         presenca: sFreqs.percentual_presenca ?? 100,
-        comunicados: sComs.total_comunicados || 0
+        comunicados: sComs.total_comunicados || 0,
+        agenda: sAgenda.total_agenda || 0
       });
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
@@ -110,7 +137,7 @@ export default function App() {
     if (logado) {
       carregarTudo();
     }
-  }, [logado, buscaAluno, buscaTurma, buscaProfessor, buscaFrequencia, buscaComunicado]);
+  }, [logado, buscaAluno, buscaTurma, buscaProfessor, buscaFrequencia, buscaComunicado, buscaAgenda]);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -218,11 +245,12 @@ export default function App() {
     { id: 'turmas', label: '🏫 Turmas' },
     { id: 'professores', label: '👩‍🏫 Professores' },
     { id: 'frequencias', label: '✅ Frequência' },
-    { id: 'comunicados', label: '📢 Comunicados' }
+    { id: 'comunicados', label: '📢 Comunicados' },
+    { id: 'agenda', label: '📔 Agenda Diária' }
   ];
 
   return (
-    <div style={{ maxWidth: '1050px', margin: '30px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+    <div style={{ maxWidth: '1100px', margin: '30px auto', padding: '20px', fontFamily: 'sans-serif' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
         <div>
           <h1 style={{ margin: 0 }}>SGEI - Gestão Escolar Infantil</h1>
@@ -236,7 +264,7 @@ export default function App() {
       </header>
 
       {/* CARDS DE INDICADORES */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '20px' }}>
         <div style={{ background: '#e9f5ff', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #007bff' }}>
           <span style={{ fontSize: '12px', color: '#555' }}>Alunos</span>
           <h2 style={{ margin: '4px 0 0 0', color: '#0056b3' }}>{stats.alunos}</h2>
@@ -250,12 +278,16 @@ export default function App() {
           <h2 style={{ margin: '4px 0 0 0', color: '#4c2889' }}>{stats.professores}</h2>
         </div>
         <div style={{ background: '#eefaf0', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #28a745' }}>
-          <span style={{ fontSize: '12px', color: '#555' }}>Frequência Geral</span>
+          <span style={{ fontSize: '12px', color: '#555' }}>Frequência</span>
           <h2 style={{ margin: '4px 0 0 0', color: '#1e7e34' }}>{stats.presenca}%</h2>
         </div>
         <div style={{ background: '#ffeef0', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #dc3545' }}>
           <span style={{ fontSize: '12px', color: '#555' }}>Comunicados</span>
           <h2 style={{ margin: '4px 0 0 0', color: '#a71d2a' }}>{stats.comunicados}</h2>
+        </div>
+        <div style={{ background: '#e6f7f9', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #17a2b8' }}>
+          <span style={{ fontSize: '12px', color: '#555' }}>Agenda Diária</span>
+          <h2 style={{ margin: '4px 0 0 0', color: '#117a8b' }}>{stats.agenda}</h2>
         </div>
       </div>
 
@@ -266,7 +298,7 @@ export default function App() {
             key={aba.id}
             onClick={() => { setAbaAtiva(aba.id); setMensagem({ texto: '', tipo: '' }); }}
             style={{
-              padding: '10px 16px',
+              padding: '10px 15px',
               background: abaAtiva === aba.id ? '#007bff' : '#e9ecef',
               color: abaAtiva === aba.id ? '#fff' : '#333',
               border: 'none',
@@ -632,6 +664,94 @@ export default function App() {
               </div>
             ))}
           </div>
+        </>
+      )}
+
+      {/* ==================== 6. ABA AGENDA DIÁRIA ==================== */}
+      {abaAtiva === 'agenda' && (
+        <>
+          {credenciais.perfil === 'professor' && (
+            <section style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '25px' }}>
+              <h3>{idEdicaoAgenda ? '✏️ Editar Diário do Aluno' : '➕ Registrar Agenda Diária'}</h3>
+              <form
+                onSubmit={(e) => salvarRegistro(
+                  e, 'agenda', idEdicaoAgenda, formAgenda,
+                  () => { setIdEdicaoAgenda(null); setFormAgenda({ aluno_nome: '', data: new Date().toISOString().slice(0, 10), alimentacao: 'Comeu tudo', sono: 'Dormiu bem (1h30)', humor: 'Alegre / Participativo', observacao: '' }); },
+                  idEdicaoAgenda ? 'Agenda atualizada com sucesso!' : 'Registro adicionado na agenda diária!'
+                )}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}
+              >
+                <div><label>Nome do Aluno:</label><input type="text" value={formAgenda.aluno_nome} onChange={(e) => setFormAgenda({ ...formAgenda, aluno_nome: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
+                <div><label>Data:</label><input type="date" value={formAgenda.data} onChange={(e) => setFormAgenda({ ...formAgenda, data: e.target.value })} required style={{ width: '100%', padding: '8px' }} /></div>
+                <div>
+                  <label>Alimentação:</label>
+                  <select value={formAgenda.alimentacao} onChange={(e) => setFormAgenda({ ...formAgenda, alimentacao: e.target.value })} style={{ width: '100%', padding: '8px' }}>
+                    <option value="Comeu tudo">Comeu tudo</option>
+                    <option value="Comeu parcialmente">Comeu parcialmente</option>
+                    <option value="Recusou a refeição">Recusou a refeição</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Sono / Descanso:</label>
+                  <select value={formAgenda.sono} onChange={(e) => setFormAgenda({ ...formAgenda, sono: e.target.value })} style={{ width: '100%', padding: '8px' }}>
+                    <option value="Dormiu bem (1h30)">Dormiu bem (1h30)</option>
+                    <option value="Soneca rápida (30min)">Soneca rápida (30min)</option>
+                    <option value="Não dormiu">Não dormiu</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Humor / Comportamento:</label>
+                  <select value={formAgenda.humor} onChange={(e) => setFormAgenda({ ...formAgenda, humor: e.target.value })} style={{ width: '100%', padding: '8px' }}>
+                    <option value="Alegre / Participativo">Alegre / Participativo</option>
+                    <option value="Calmo / Tranquilo">Calmo / Tranquilo</option>
+                    <option value="Agitado / Choroso">Agitado / Choroso</option>
+                  </select>
+                </div>
+                <div><label>Atividades / Observações:</label><input type="text" placeholder="Ex: Pintura com guache, brincou no parque..." value={formAgenda.observacao} onChange={(e) => setFormAgenda({ ...formAgenda, observacao: e.target.value })} style={{ width: '100%', padding: '8px' }} /></div>
+                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
+                  <button type="submit" style={{ padding: '10px 20px', background: idEdicaoAgenda ? '#28a745' : '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{idEdicaoAgenda ? 'Atualizar Agenda' : 'Salvar na Agenda'}</button>
+                  {idEdicaoAgenda && <button type="button" onClick={() => { setIdEdicaoAgenda(null); setFormAgenda({ aluno_nome: '', data: new Date().toISOString().slice(0, 10), alimentacao: 'Comeu tudo', sono: 'Dormiu bem (1h30)', humor: 'Alegre / Participativo', observacao: '' }); }} style={{ padding: '10px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancelar</button>}
+                </div>
+              </form>
+            </section>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ margin: 0 }}>📔 Rotina Diária dos Alunos</h3>
+            <input type="text" placeholder="🔍 Buscar por aluno ou humor..." value={buscaAgenda} onChange={(e) => setBuscaAgenda(e.target.value)} style={{ padding: '8px 12px', width: '280px', borderRadius: '4px', border: '1px solid #ccc' }} />
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: '#eee' }}>
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Data</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Aluno</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Alimentação</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Sono</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Humor</th>
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>Observações</th>
+                {credenciais.perfil === 'professor' && <th style={{ padding: '8px', border: '1px solid #ddd' }}>Ações</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {agenda.map((item) => (
+                <tr key={item.id}>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{formatarDataBR(item.data)}</td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}><strong>{item.aluno_nome}</strong></td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.alimentacao}</td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.sono}</td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.humor}</td>
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>{item.observacao || '-'}</td>
+                  {credenciais.perfil === 'professor' && (
+                    <td style={{ padding: '8px', border: '1px solid #ddd', display: 'flex', gap: '5px' }}>
+                      <button onClick={() => { setIdEdicaoAgenda(item.id); setFormAgenda({ aluno_nome: item.aluno_nome, data: item.data, alimentacao: item.alimentacao, sono: item.sono, humor: item.humor, observacao: item.observacao || '' }); }} style={{ padding: '4px 8px', background: '#ffc107', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Editar</button>
+                      <button onClick={() => excluirRegistro('agenda', item.id, 'Remover este registro da agenda?', 'Registro removido!')} style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>Excluir</button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </>
       )}
     </div>
