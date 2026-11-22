@@ -46,6 +46,38 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS professores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    formacao TEXT NOT NULL,
+    turno TEXT NOT NULL,
+    telefone TEXT NOT NULL,
+    email TEXT
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS comunicados (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT NOT NULL,
+    mensagem TEXT NOT NULL,
+    categoria TEXT NOT NULL,
+    data_publicacao TEXT NOT NULL
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS frequencias (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    aluno_nome TEXT NOT NULL,
+    turma_nome TEXT NOT NULL,
+    data TEXT NOT NULL,
+    status TEXT NOT NULL,
+    observacao TEXT
+  )
+`);
+
 fs.writeFileSync(
   dbPath,
   Buffer.from(db.export())
