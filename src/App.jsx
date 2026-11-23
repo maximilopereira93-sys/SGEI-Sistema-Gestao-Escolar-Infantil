@@ -5,7 +5,7 @@ const API_BASE = 'http://localhost:3000';
 export default function App() {
   const [logado, setLogado] = useState(false);
   const [credenciais, setCredenciais] = useState({ usuario: '', senha: '', perfil: 'professor' });
-  const [abaAtiva, setAbaAtiva] = useState('dashboard'); // 'dashboard' | 'aulas' | 'frequencias' | 'alunos' | 'turmas' | 'professores' | 'agenda' | 'relatorios' | 'comunicados'
+  const [abaAtiva, setAbaAtiva] = useState('frequencias'); // 'dashboard' | 'aulas' | 'frequencias' | 'alunos' | 'turmas' | 'professores' | 'agenda' | 'relatorios' | 'comunicados'
 
   // Resumo / Estatísticas Gerais
   const [stats, setStats] = useState({
@@ -17,6 +17,11 @@ export default function App() {
     agenda: 0,
     aulas: 0
   });
+
+  // Estados Chamada em Lote (Exclusivo Professor - igual à imagem)
+  const [dataChamada, setDataChamada] = useState(new Date().toISOString().slice(0, 10));
+  const [turmaChamada, setTurmaChamada] = useState('Turma Geral');
+  const [presencasMarcadas, setPresencasMarcadas] = useState({});
 
   // Estados Próximas Aulas (Horários)
   const [aulas, setAulas] = useState([]);
@@ -61,17 +66,9 @@ export default function App() {
   const [idEdicaoProfessor, setIdEdicaoProfessor] = useState(null);
   const [formProfessor, setFormProfessor] = useState({ nome: '', formacao: '', turno: 'Matutino', telefone: '', email: '' });
 
-  // Estados Frequências
+  // Estados Frequências (Histórico)
   const [frequencias, setFrequencias] = useState([]);
   const [buscaFrequencia, setBuscaFrequencia] = useState('');
-  const [idEdicaoFrequencia, setIdEdicaoFrequencia] = useState(null);
-  const [formFrequencia, setFormFrequencia] = useState({
-    aluno_nome: '',
-    turma_nome: '',
-    data: new Date().toISOString().slice(0, 10),
-    status: 'Presente',
-    observacao: ''
-  });
 
   // Estados Comunicados
   const [comunicados, setComunicados] = useState([]);
@@ -163,7 +160,12 @@ export default function App() {
       ]);
 
       if (Array.isArray(dAlunos)) setAlunos(dAlunos);
-      if (Array.isArray(dTurmas)) setTurmas(dTurmas);
+      if (Array.isArray(dTurmas)) {
+        setTurmas(dTurmas);
+        if (dTurmas.length > 0 && turmaChamada === 'Turma Geral') {
+          setTurmaChamada(dTurmas[0].nome);
+        }
+      }
       if (Array.isArray(dProfs)) setProfessores(dProfs);
       if (Array.isArray(dFreqs)) setFrequencias(dFreqs);
       if (Array.isArray(dComs)) setComunicados(dComs);
@@ -209,6 +211,61 @@ export default function App() {
     if (!dataISO) return '-';
     const [ano, mes, dia] = dataISO.split('-');
     return `${dia}/${mes}/${ano}`;
+  };
+
+  // Handlers da Chamada em Lote (Exclusivo Professor)
+  const togglePresencaAluno = (id) => {
+    setPresencasMarcadas((prev) => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const totalPresentesMarcados = alunos.filter((a) => presencasMarcadas[a.id]).length;
+  const todosMarcados = alunos.length > 0 && totalPresentesMarcados === alunos.length;
+
+  const handleMarcarTodos = () => {
+    if (todosMarcados) {
+      setPresencasMarcadas({});
+    } else {
+      const novoMapa = {};
+      alunos.forEach((a) => { novoMapa[a.id] = true; });
+      setPresencasMarcadas(novoMapa);
+    }
+  };
+
+  const handleSalvarChamadaEmLote = async () => {
+    if (alunos.length === 0) {
+      setMensagem({ texto: 'Cadastre alunos antes de realizar a chamada.', tipo: 'erro' });
+      return;
+    }
+
+    const registros = alunos.map((a) => ({
+      aluno_nome: a.nome,
+      presente: Boolean(presencasMarcadas[a.id])
+    }));
+
+    try {
+      const res = await fetch(`${API_BASE}/frequencias/lote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: dataChamada,
+          turma_nome: turmaChamada || 'Turma Geral',
+          registros
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMensagem({ texto: data.mensagem, tipo: 'sucesso' });
+        setPresencasMarcadas({});
+        carregarTudo();
+      } else {
+        setMensagem({ texto: data.erro || 'Erro ao salvar frequência.', tipo: 'erro' });
+      }
+    } catch (err) {
+      setMensagem({ texto: 'Erro de conexão com o servidor.', tipo: 'erro' });
+    }
   };
 
   const exportarCSV = () => {
@@ -298,7 +355,7 @@ export default function App() {
     );
   };
 
-  // ==================== COMPONENTE EXCLUSIVO DO PROFESSOR: MINHAS TURMAS (IGUAL À IMAGEM) ====================
+  // Seção Minhas Turmas (Exclusivo Professor)
   const renderSecaoMinhasTurmas = () => {
     if (credenciais.perfil !== 'professor') return null;
 
@@ -335,7 +392,6 @@ export default function App() {
                   gap: '18px'
                 }}
               >
-                {/* Cabeçalho do Card */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                     <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#090d16', lineHeight: '1.25' }}>
@@ -358,7 +414,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Detalhes (Capacidade e Professor) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px', color: '#334155' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span>👥</span>
@@ -370,11 +425,10 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Botões de Ação Rápida (Frequência e Atividades) */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '4px' }}>
                   <button
                     onClick={() => {
-                      setFormFrequencia({ ...formFrequencia, turma_nome: t.nome });
+                      setTurmaChamada(t.nome);
                       setAbaAtiva('frequencias');
                     }}
                     style={{
@@ -437,7 +491,7 @@ export default function App() {
 
       {aulas.length === 0 ? (
         <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
-          Nenhuma aula agendada para hoje. {credenciais.perfil === 'professor' && 'Clique em "Horários / Aulas" no menu para adicionar.'}
+          Nenhuma aula agendada para hoje.
         </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -676,11 +730,223 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Seção Minhas Turmas (visível APENAS para o perfil Professor) */}
               {renderSecaoMinhasTurmas()}
-
-              {/* Bloco Próximas Aulas / Agenda de hoje */}
               {renderCardProximasAulas(false)}
+            </div>
+          )}
+
+          {/* ==================== TELA: FREQUÊNCIA (CHAMADA EM LOTE EXCLUSIVA DO PROFESSOR) ==================== */}
+          {abaAtiva === 'frequencias' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {credenciais.perfil === 'professor' && (
+                <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+                  {/* Cabeçalho igual à imagem */}
+                  <div style={{ marginBottom: '22px' }}>
+                    <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#090d16' }}>Registro de Frequência</h2>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '15px', color: '#64748b' }}>
+                      Marque a presença dos alunos para a data selecionada
+                    </p>
+                  </div>
+
+                  {/* Data da Aula + Turma */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#0f172a', marginBottom: '8px' }}>
+                        Data da Aula
+                      </label>
+                      <input
+                        type="date"
+                        value={dataChamada}
+                        onChange={(e) => setDataChamada(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '11px 14px',
+                          borderRadius: '10px',
+                          border: '1px solid #e2e8f0',
+                          fontSize: '14px',
+                          color: '#0f172a',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#0f172a', marginBottom: '8px' }}>
+                        Turma
+                      </label>
+                      <select
+                        value={turmaChamada}
+                        onChange={(e) => setTurmaChamada(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '11px 14px',
+                          borderRadius: '10px',
+                          border: '1px solid #e2e8f0',
+                          fontSize: '14px',
+                          color: '#0f172a',
+                          background: '#fff'
+                        }}
+                      >
+                        {turmasUnicas.length === 0 ? (
+                          <option value="Turma Geral">Turma Geral</option>
+                        ) : (
+                          turmasUnicas.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Barra Cinza: Presentes X / Y + Botão Marcar Todos */}
+                  <div style={{
+                    background: '#f1f5f9',
+                    borderRadius: '12px',
+                    padding: '14px 20px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '20px'
+                  }}>
+                    <span style={{ fontSize: '15px', fontWeight: '600', color: '#0f172a' }}>
+                      Presentes: {totalPresentesMarcados} / {alunos.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleMarcarTodos}
+                      style={{
+                        background: '#fff',
+                        color: '#090d16',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '8px 16px',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {todosMarcados ? 'Desmarcar Todos' : 'Marcar Todos'}
+                    </button>
+                  </div>
+
+                  {/* Lista de Alunos com Checkboxes e Scroll */}
+                  <div style={{ marginBottom: '22px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a', marginBottom: '10px' }}>
+                      Lista de Alunos
+                    </div>
+
+                    {alunos.length === 0 ? (
+                      <div style={{ padding: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', color: '#64748b', fontSize: '14px' }}>
+                        Nenhum aluno cadastrado. Cadastre os alunos na aba <strong>Alunos</strong> para realizar a chamada.
+                      </div>
+                    ) : (
+                      <div style={{
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        maxHeight: '320px',
+                        overflowY: 'auto'
+                      }}>
+                        {alunos.map((aluno, index) => {
+                          const marcado = Boolean(presencasMarcadas[aluno.id]);
+                          return (
+                            <label
+                              key={aluno.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '14px',
+                                padding: '14px 18px',
+                                borderBottom: index < alunos.length - 1 ? '1px solid #f1f5f9' : 'none',
+                                cursor: 'pointer',
+                                background: marcado ? '#f8fafc' : '#fff',
+                                userSelect: 'none'
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={marcado}
+                                onChange={() => togglePresencaAluno(aluno.id)}
+                                style={{
+                                  width: '18px',
+                                  height: '18px',
+                                  accentColor: '#090d16',
+                                  cursor: 'pointer'
+                                }}
+                              />
+                              <span style={{ fontSize: '15px', fontWeight: '500', color: '#0f172a' }}>
+                                {aluno.nome}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Botão Largo Preto: Salvar Frequência */}
+                  <button
+                    type="button"
+                    onClick={handleSalvarChamadaEmLote}
+                    style={{
+                      width: '100%',
+                      padding: '14px',
+                      background: '#090d16',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Salvar Frequência
+                  </button>
+                </div>
+              )}
+
+              {/* Histórico de Chamadas Salvas (Visível para Professor e Responsáveis) */}
+              <div style={{ background: '#fff', borderRadius: '14px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px' }}>Histórico de Chamadas Registradas</h3>
+                  <input
+                    type="text"
+                    placeholder="🔍 Buscar aluno ou turma..."
+                    value={buscaFrequencia}
+                    onChange={(e) => setBuscaFrequencia(e.target.value)}
+                    style={{ padding: '8px 12px', width: '260px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                  />
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ padding: '12px' }}>Aluno</th>
+                      <th style={{ padding: '12px' }}>Data</th>
+                      <th style={{ padding: '12px' }}>Turma</th>
+                      <th style={{ padding: '12px' }}>Status</th>
+                      {credenciais.perfil === 'professor' && <th style={{ padding: '12px' }}>Ações</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {frequencias.map((f) => (
+                      <tr key={f.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '12px', fontWeight: '600' }}>{f.aluno_nome}</td>
+                        <td style={{ padding: '12px' }}>{formatarDataBR(f.data)}</td>
+                        <td style={{ padding: '12px' }}>{f.turma_nome}</td>
+                        <td style={{ padding: '12px' }}>{renderBadgeStatus(f.status)}</td>
+                        {credenciais.perfil === 'professor' && (
+                          <td style={{ padding: '12px' }}>
+                            <button
+                              onClick={() => excluirRegistro('frequencias', f.id, 'Excluir registro?', 'Excluído!')}
+                              style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                              Excluir
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -707,9 +973,9 @@ export default function App() {
                         <option value="Agendada">Agendada</option>
                       </select>
                     </div>
-                    <div><label>Turma (ex: Turma A - Maternal I):</label><input type="text" value={formAula.turma} onChange={(e) => setFormAula({ ...formAula, turma: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div><label>Atividade / Disciplina:</label><input type="text" placeholder="Ex: Artes e Pintura" value={formAula.atividade} onChange={(e) => setFormAula({ ...formAula, atividade: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div><label>Sala (ex: Sala 101):</label><input type="text" value={formAula.sala} onChange={(e) => setFormAula({ ...formAula, sala: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Turma:</label><input type="text" value={formAula.turma} onChange={(e) => setFormAula({ ...formAula, turma: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Atividade / Disciplina:</label><input type="text" value={formAula.atividade} onChange={(e) => setFormAula({ ...formAula, atividade: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Sala:</label><input type="text" value={formAula.sala} onChange={(e) => setFormAula({ ...formAula, sala: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
                     <div style={{ gridColumn: 'span 3', display: 'flex', gap: '10px', marginTop: '6px' }}>
                       <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
                         {idEdicaoAula ? 'Atualizar Aula' : 'Salvar na Agenda de Hoje'}
@@ -723,7 +989,6 @@ export default function App() {
                   </form>
                 </section>
               )}
-
               {renderCardProximasAulas(true)}
             </div>
           )}
@@ -1059,68 +1324,6 @@ export default function App() {
                         <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
                           <button onClick={() => { setIdEdicaoProfessor(p.id); setFormProfessor({ nome: p.nome, formacao: p.formacao, turno: p.turno, telefone: p.telefone, email: p.email || '' }); }} style={{ padding: '5px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Editar</button>
                           <button onClick={() => excluirRegistro('professores', p.id, 'Excluir este professor?', 'Professor excluído!')} style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Excluir</button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* ==================== TELA: FREQUÊNCIA ==================== */}
-          {abaAtiva === 'frequencias' && (
-            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
-              {credenciais.perfil === 'professor' && (
-                <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
-                  <h3 style={{ marginTop: 0 }}>{idEdicaoFrequencia ? 'Editar Chamada' : 'Registrar Chamada Diária'}</h3>
-                  <form
-                    onSubmit={(e) => salvarRegistro(
-                      e, 'frequencias', idEdicaoFrequencia, formFrequencia,
-                      () => { setIdEdicaoFrequencia(null); setFormFrequencia({ aluno_nome: '', turma_nome: '', data: new Date().toISOString().slice(0, 10), status: 'Presente', observacao: '' }); },
-                      idEdicaoFrequencia ? 'Frequência atualizada!' : 'Frequência registrada!'
-                    )}
-                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
-                  >
-                    <div><label>Aluno:</label><input type="text" value={formFrequencia.aluno_nome} onChange={(e) => setFormFrequencia({ ...formFrequencia, aluno_nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div><label>Turma:</label><input type="text" value={formFrequencia.turma_nome} onChange={(e) => setFormFrequencia({ ...formFrequencia, turma_nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div><label>Data:</label><input type="date" value={formFrequencia.data} onChange={(e) => setFormFrequencia({ ...formFrequencia, data: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div>
-                      <label>Status:</label>
-                      <select value={formFrequencia.status} onChange={(e) => setFormFrequencia({ ...formFrequencia, status: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                        <option value="Presente">Presente</option>
-                        <option value="Falta">Ausente (Falta)</option>
-                        <option value="Falta Justificada">Justificado</option>
-                      </select>
-                    </div>
-                    <div style={{ gridColumn: 'span 2' }}><label>Observação:</label><input type="text" value={formFrequencia.observacao} onChange={(e) => setFormFrequencia({ ...formFrequencia, observacao: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
-                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{idEdicaoFrequencia ? 'Atualizar Chamada' : 'Salvar Chamada'}</button>
-                    </div>
-                  </form>
-                </section>
-              )}
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <th style={{ padding: '12px' }}>Aluno</th>
-                    <th style={{ padding: '12px' }}>Data</th>
-                    <th style={{ padding: '12px' }}>Turma</th>
-                    <th style={{ padding: '12px' }}>Status</th>
-                    {credenciais.perfil === 'professor' && <th style={{ padding: '12px' }}>Ações</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {frequencias.map((f) => (
-                    <tr key={f.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '12px', fontWeight: '600' }}>{f.aluno_nome}</td>
-                      <td style={{ padding: '12px' }}>{formatarDataBR(f.data)}</td>
-                      <td style={{ padding: '12px' }}>{f.turma_nome}</td>
-                      <td style={{ padding: '12px' }}>{renderBadgeStatus(f.status)}</td>
-                      {credenciais.perfil === 'professor' && (
-                        <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
-                          <button onClick={() => { setIdEdicaoFrequencia(f.id); setFormFrequencia({ aluno_nome: f.aluno_nome, turma_nome: f.turma_nome, data: f.data, status: f.status, observacao: f.observacao || '' }); }} style={{ padding: '5px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Editar</button>
-                          <button onClick={() => excluirRegistro('frequencias', f.id, 'Excluir registro?', 'Excluído!')} style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Excluir</button>
                         </td>
                       )}
                     </tr>
