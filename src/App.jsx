@@ -298,7 +298,126 @@ export default function App() {
     );
   };
 
-  // Componente visual "Próximas Aulas / Agenda de hoje" (igual à imagem)
+  // ==================== COMPONENTE EXCLUSIVO DO PROFESSOR: MINHAS TURMAS (IGUAL À IMAGEM) ====================
+  const renderSecaoMinhasTurmas = () => {
+    if (credenciais.perfil !== 'professor') return null;
+
+    return (
+      <section>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '700', color: '#090d16' }}>Minhas Turmas</h2>
+          <button
+            onClick={() => setAbaAtiva('turmas')}
+            style={{ background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+          >
+            + Nova Turma
+          </button>
+        </div>
+
+        {turmas.length === 0 ? (
+          <div style={{ background: '#fff', borderRadius: '14px', padding: '24px', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '14px' }}>
+            Nenhuma turma cadastrada ainda. Clique em <strong>+ Nova Turma</strong> para adicionar.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '18px' }}>
+            {turmas.map((t) => (
+              <div
+                key={t.id}
+                style={{
+                  background: '#fff',
+                  borderRadius: '16px',
+                  padding: '22px',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: '18px'
+                }}
+              >
+                {/* Cabeçalho do Card */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#090d16', lineHeight: '1.25' }}>
+                      {t.nome}
+                    </h3>
+                    <span style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '999px',
+                      padding: '4px 12px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      color: '#0f172a',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {t.turno}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>
+                    {t.faixa_etaria}
+                  </div>
+                </div>
+
+                {/* Detalhes (Capacidade e Professor) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px', color: '#334155' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>👥</span>
+                    <span>{t.capacidade} alunos</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>📅</span>
+                    <span>Prof. {t.professor}</span>
+                  </div>
+                </div>
+
+                {/* Botões de Ação Rápida (Frequência e Atividades) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '4px' }}>
+                  <button
+                    onClick={() => {
+                      setFormFrequencia({ ...formFrequencia, turma_nome: t.nome });
+                      setAbaAtiva('frequencias');
+                    }}
+                    style={{
+                      background: '#090d16',
+                      color: '#fff',
+                      border: '1px solid #090d16',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Frequência
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFormAula({ ...formAula, turma: t.nome });
+                      setAbaAtiva('aulas');
+                    }}
+                    style={{
+                      background: '#fff',
+                      color: '#090d16',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Atividades
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  // Componente visual "Próximas Aulas / Agenda de hoje"
   const renderCardProximasAulas = (exibirAcoes = false) => (
     <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.03)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -532,9 +651,9 @@ export default function App() {
             </div>
           )}
 
-          {/* ==================== TELA: DASHBOARD (COM PRÓXIMAS AULAS) ==================== */}
+          {/* ==================== TELA: DASHBOARD ==================== */}
           {abaAtiva === 'dashboard' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
               <div style={{ background: '#fff', borderRadius: '14px', padding: '24px', border: '1px solid #e2e8f0' }}>
                 <h2 style={{ margin: '0 0 16px 0', fontSize: '18px' }}>Resumo Geral</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
@@ -557,7 +676,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Bloco Próximas Aulas / Agenda de hoje (idêntico à imagem) */}
+              {/* Seção Minhas Turmas (visível APENAS para o perfil Professor) */}
+              {renderSecaoMinhasTurmas()}
+
+              {/* Bloco Próximas Aulas / Agenda de hoje */}
               {renderCardProximasAulas(false)}
             </div>
           )}
@@ -818,66 +940,70 @@ export default function App() {
 
           {/* ==================== TELA: TURMAS ==================== */}
           {abaAtiva === 'turmas' && (
-            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
-              {credenciais.perfil === 'professor' && (
-                <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
-                  <h3 style={{ marginTop: 0 }}>{idEdicaoTurma ? 'Editar Turma' : 'Cadastrar Nova Turma'}</h3>
-                  <form
-                    onSubmit={(e) => salvarRegistro(
-                      e, 'turmas', idEdicaoTurma, { ...formTurma, capacidade: Number(formTurma.capacidade) },
-                      () => { setIdEdicaoTurma(null); setFormTurma({ nome: '', turno: 'Matutino', faixa_etaria: '', professor: '', capacidade: '' }); },
-                      idEdicaoTurma ? 'Turma atualizada!' : 'Turma cadastrada!'
-                    )}
-                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
-                  >
-                    <div><label>Nome da Turma:</label><input type="text" value={formTurma.nome} onChange={(e) => setFormTurma({ ...formTurma, nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div>
-                      <label>Turno:</label>
-                      <select value={formTurma.turno} onChange={(e) => setFormTurma({ ...formTurma, turno: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                        <option value="Matutino">Matutino</option>
-                        <option value="Vespertino">Vespertino</option>
-                        <option value="Integral">Integral</option>
-                      </select>
-                    </div>
-                    <div><label>Faixa Etária:</label><input type="text" value={formTurma.faixa_etaria} onChange={(e) => setFormTurma({ ...formTurma, faixa_etaria: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div><label>Professor:</label><input type="text" value={formTurma.professor} onChange={(e) => setFormTurma({ ...formTurma, professor: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div style={{ gridColumn: 'span 2' }}><label>Capacidade:</label><input type="number" min="1" value={formTurma.capacidade} onChange={(e) => setFormTurma({ ...formTurma, capacidade: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
-                    <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
-                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{idEdicaoTurma ? 'Atualizar Turma' : 'Salvar Turma'}</button>
-                      {idEdicaoTurma && <button type="button" onClick={() => { setIdEdicaoTurma(null); setFormTurma({ nome: '', turno: 'Matutino', faixa_etaria: '', professor: '', capacidade: '' }); }} style={{ padding: '10px 18px', background: '#64748b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>}
-                    </div>
-                  </form>
-                </section>
-              )}
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <th style={{ padding: '12px' }}>Turma</th>
-                    <th style={{ padding: '12px' }}>Turno</th>
-                    <th style={{ padding: '12px' }}>Faixa Etária</th>
-                    <th style={{ padding: '12px' }}>Professor</th>
-                    <th style={{ padding: '12px' }}>Vagas</th>
-                    {credenciais.perfil === 'professor' && <th style={{ padding: '12px' }}>Ações</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {turmas.map((t) => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '12px', fontWeight: '600' }}>{t.nome}</td>
-                      <td style={{ padding: '12px' }}>{t.turno}</td>
-                      <td style={{ padding: '12px' }}>{t.faixa_etaria}</td>
-                      <td style={{ padding: '12px' }}>{t.professor}</td>
-                      <td style={{ padding: '12px' }}>{t.capacidade}</td>
-                      {credenciais.perfil === 'professor' && (
-                        <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
-                          <button onClick={() => { setIdEdicaoTurma(t.id); setFormTurma({ nome: t.nome, turno: t.turno, faixa_etaria: t.faixa_etaria, professor: t.professor, capacidade: t.capacidade }); }} style={{ padding: '5px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Editar</button>
-                          <button onClick={() => excluirRegistro('turmas', t.id, 'Excluir esta turma?', 'Turma excluída!')} style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Excluir</button>
-                        </td>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {renderSecaoMinhasTurmas()}
+
+              <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
+                {credenciais.perfil === 'professor' && (
+                  <section style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
+                    <h3 style={{ marginTop: 0 }}>{idEdicaoTurma ? 'Editar Turma' : 'Cadastrar Nova Turma'}</h3>
+                    <form
+                      onSubmit={(e) => salvarRegistro(
+                        e, 'turmas', idEdicaoTurma, { ...formTurma, capacidade: Number(formTurma.capacidade) },
+                        () => { setIdEdicaoTurma(null); setFormTurma({ nome: '', turno: 'Matutino', faixa_etaria: '', professor: '', capacidade: '' }); },
+                        idEdicaoTurma ? 'Turma atualizada!' : 'Turma cadastrada!'
                       )}
+                      style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}
+                    >
+                      <div><label>Nome da Turma:</label><input type="text" value={formTurma.nome} onChange={(e) => setFormTurma({ ...formTurma, nome: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                      <div>
+                        <label>Turno:</label>
+                        <select value={formTurma.turno} onChange={(e) => setFormTurma({ ...formTurma, turno: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                          <option value="Matutino">Matutino</option>
+                          <option value="Vespertino">Vespertino</option>
+                          <option value="Integral">Integral</option>
+                        </select>
+                      </div>
+                      <div><label>Faixa Etária:</label><input type="text" value={formTurma.faixa_etaria} onChange={(e) => setFormTurma({ ...formTurma, faixa_etaria: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                      <div><label>Professor:</label><input type="text" value={formTurma.professor} onChange={(e) => setFormTurma({ ...formTurma, professor: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                      <div style={{ gridColumn: 'span 2' }}><label>Capacidade:</label><input type="number" min="1" value={formTurma.capacidade} onChange={(e) => setFormTurma({ ...formTurma, capacidade: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                      <div style={{ gridColumn: 'span 2', display: 'flex', gap: '10px' }}>
+                        <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{idEdicaoTurma ? 'Atualizar Turma' : 'Salvar Turma'}</button>
+                        {idEdicaoTurma && <button type="button" onClick={() => { setIdEdicaoTurma(null); setFormTurma({ nome: '', turno: 'Matutino', faixa_etaria: '', professor: '', capacidade: '' }); }} style={{ padding: '10px 18px', background: '#64748b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>}
+                      </div>
+                    </form>
+                  </section>
+                )}
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ padding: '12px' }}>Turma</th>
+                      <th style={{ padding: '12px' }}>Turno</th>
+                      <th style={{ padding: '12px' }}>Faixa Etária</th>
+                      <th style={{ padding: '12px' }}>Professor</th>
+                      <th style={{ padding: '12px' }}>Vagas</th>
+                      {credenciais.perfil === 'professor' && <th style={{ padding: '12px' }}>Ações</th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {turmas.map((t) => (
+                      <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '12px', fontWeight: '600' }}>{t.nome}</td>
+                        <td style={{ padding: '12px' }}>{t.turno}</td>
+                        <td style={{ padding: '12px' }}>{t.faixa_etaria}</td>
+                        <td style={{ padding: '12px' }}>{t.professor}</td>
+                        <td style={{ padding: '12px' }}>{t.capacidade}</td>
+                        {credenciais.perfil === 'professor' && (
+                          <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
+                            <button onClick={() => { setIdEdicaoTurma(t.id); setFormTurma({ nome: t.nome, turno: t.turno, faixa_etaria: t.faixa_etaria, professor: t.professor, capacidade: t.capacidade }); }} style={{ padding: '5px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Editar</button>
+                            <button onClick={() => excluirRegistro('turmas', t.id, 'Excluir esta turma?', 'Turma excluída!')} style={{ padding: '5px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Excluir</button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
