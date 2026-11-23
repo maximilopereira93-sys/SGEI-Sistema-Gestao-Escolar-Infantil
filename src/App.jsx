@@ -5,7 +5,7 @@ const API_BASE = 'http://localhost:3000';
 export default function App() {
   const [logado, setLogado] = useState(false);
   const [credenciais, setCredenciais] = useState({ usuario: '', senha: '', perfil: 'professor' });
-  const [abaAtiva, setAbaAtiva] = useState('relatorios'); // 'dashboard' | 'frequencias' | 'alunos' | 'turmas' | 'professores' | 'agenda' | 'relatorios' | 'comunicados'
+  const [abaAtiva, setAbaAtiva] = useState('dashboard'); // 'dashboard' | 'aulas' | 'frequencias' | 'alunos' | 'turmas' | 'professores' | 'agenda' | 'relatorios' | 'comunicados'
 
   // Resumo / Estatísticas Gerais
   const [stats, setStats] = useState({
@@ -14,7 +14,21 @@ export default function App() {
     professores: 0,
     presenca: 100,
     comunicados: 0,
-    agenda: 0
+    agenda: 0,
+    aulas: 0
+  });
+
+  // Estados Próximas Aulas (Horários)
+  const [aulas, setAulas] = useState([]);
+  const [buscaAula, setBuscaAula] = useState('');
+  const [idEdicaoAula, setIdEdicaoAula] = useState(null);
+  const [formAula, setFormAula] = useState({
+    hora_inicio: '08:00',
+    hora_fim: '09:30',
+    turma: '',
+    atividade: '',
+    sala: '',
+    status: 'Em breve'
   });
 
   // Estados Relatórios
@@ -111,7 +125,8 @@ export default function App() {
         resProfs, statProfs,
         resFreqs, statFreqs,
         resComs, statComs,
-        resAgenda, statAgenda
+        resAgenda, statAgenda,
+        resAulas, statAulas
       ] = await Promise.all([
         fetch(buscaAluno.trim() ? `${API_BASE}/alunos?busca=${encodeURIComponent(buscaAluno)}` : `${API_BASE}/alunos`),
         fetch(`${API_BASE}/alunos/estatisticas`),
@@ -124,7 +139,9 @@ export default function App() {
         fetch(buscaComunicado.trim() ? `${API_BASE}/comunicados?busca=${encodeURIComponent(buscaComunicado)}` : `${API_BASE}/comunicados`),
         fetch(`${API_BASE}/comunicados/estatisticas`),
         fetch(buscaAgenda.trim() ? `${API_BASE}/agenda?busca=${encodeURIComponent(buscaAgenda)}` : `${API_BASE}/agenda`),
-        fetch(`${API_BASE}/agenda/estatisticas`)
+        fetch(`${API_BASE}/agenda/estatisticas`),
+        fetch(buscaAula.trim() ? `${API_BASE}/aulas?busca=${encodeURIComponent(buscaAula)}` : `${API_BASE}/aulas`),
+        fetch(`${API_BASE}/aulas/estatisticas`)
       ]);
 
       const [
@@ -133,14 +150,16 @@ export default function App() {
         dProfs, sProfs,
         dFreqs, sFreqs,
         dComs, sComs,
-        dAgenda, sAgenda
+        dAgenda, sAgenda,
+        dAulas, sAulas
       ] = await Promise.all([
         resAlunos.json(), statAlunos.json(),
         resTurmas.json(), statTurmas.json(),
         resProfs.json(), statProfs.json(),
         resFreqs.json(), statFreqs.json(),
         resComs.json(), statComs.json(),
-        resAgenda.json(), statAgenda.json()
+        resAgenda.json(), statAgenda.json(),
+        resAulas.json(), statAulas.json()
       ]);
 
       if (Array.isArray(dAlunos)) setAlunos(dAlunos);
@@ -149,6 +168,7 @@ export default function App() {
       if (Array.isArray(dFreqs)) setFrequencias(dFreqs);
       if (Array.isArray(dComs)) setComunicados(dComs);
       if (Array.isArray(dAgenda)) setAgenda(dAgenda);
+      if (Array.isArray(dAulas)) setAulas(dAulas);
 
       setStats({
         alunos: sAlunos.total_alunos || 0,
@@ -156,7 +176,8 @@ export default function App() {
         professores: sProfs.total_professores || 0,
         presenca: sFreqs.percentual_presenca ?? 100,
         comunicados: sComs.total_comunicados || 0,
-        agenda: sAgenda.total_agenda || 0
+        agenda: sAgenda.total_agenda || 0,
+        aulas: sAulas.total_aulas || 0
       });
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
@@ -167,7 +188,7 @@ export default function App() {
     if (logado) {
       carregarTudo();
     }
-  }, [logado, buscaAluno, buscaTurma, buscaProfessor, buscaFrequencia, buscaComunicado, buscaAgenda]);
+  }, [logado, buscaAluno, buscaTurma, buscaProfessor, buscaFrequencia, buscaComunicado, buscaAgenda, buscaAula]);
 
   useEffect(() => {
     if (logado) {
@@ -190,7 +211,6 @@ export default function App() {
     return `${dia}/${mes}/${ano}`;
   };
 
-  // Exportar CSV da Tabela de Frequência
   const exportarCSV = () => {
     const cabecalho = ['Aluno', 'Data', 'Turma', 'Status', 'Observacao'];
     const linhas = relatorio.registros.map((r) => [
@@ -251,16 +271,15 @@ export default function App() {
     }
   };
 
-  // Badge colorida igual à imagem
   const renderBadgeStatus = (status) => {
-    let bg = '#16a34a'; // verde
+    let bg = '#16a34a';
     let label = status;
 
     if (status === 'Falta' || status === 'Ausente') {
-      bg = '#ef4444'; // vermelho
+      bg = '#ef4444';
       label = 'Ausente';
     } else if (status === 'Falta Justificada' || status === 'Justificado') {
-      bg = '#eab308'; // amarelo
+      bg = '#eab308';
       label = 'Justificado';
     }
 
@@ -278,6 +297,106 @@ export default function App() {
       </span>
     );
   };
+
+  // Componente visual "Próximas Aulas / Agenda de hoje" (igual à imagem)
+  const renderCardProximasAulas = (exibirAcoes = false) => (
+    <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.03)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Próximas Aulas</h2>
+          <p style={{ margin: '4px 0 0 0', fontSize: '15px', color: '#64748b' }}>Agenda de hoje</p>
+        </div>
+        {!exibirAcoes && credenciais.perfil === 'professor' && (
+          <button
+            onClick={() => setAbaAtiva('aulas')}
+            style={{ background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+          >
+            + Gerenciar Horários
+          </button>
+        )}
+      </div>
+
+      {aulas.length === 0 ? (
+        <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
+          Nenhuma aula agendada para hoje. {credenciais.perfil === 'professor' && 'Clique em "Horários / Aulas" no menu para adicionar.'}
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {aulas.map((aula) => {
+            const emBreve = aula.status === 'Em breve';
+            return (
+              <div
+                key={aula.id}
+                style={{
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '18px 24px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: '#fff'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '28px' }}>
+                  <div style={{ textAlign: 'center', minWidth: '52px' }}>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>{aula.hora_inicio}</div>
+                    <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>{aula.hora_fim}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>{aula.turma}</div>
+                    <div style={{ fontSize: '14px', color: '#64748b', marginTop: '3px' }}>
+                      {aula.atividade} - {aula.sala}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    padding: '6px 14px',
+                    borderRadius: '999px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    background: emBreve ? '#090d16' : '#fff',
+                    color: emBreve ? '#fff' : '#0f172a',
+                    border: emBreve ? '1px solid #090d16' : '1px solid #e2e8f0'
+                  }}>
+                    {aula.status}
+                  </span>
+
+                  {exibirAcoes && credenciais.perfil === 'professor' && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setIdEdicaoAula(aula.id);
+                          setFormAula({
+                            hora_inicio: aula.hora_inicio,
+                            hora_fim: aula.hora_fim,
+                            turma: aula.turma,
+                            atividade: aula.atividade,
+                            sala: aula.sala,
+                            status: aula.status
+                          });
+                        }}
+                        style={{ padding: '6px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => excluirRegistro('aulas', aula.id, 'Remover esta aula da agenda?', 'Aula removida!')}
+                        style={{ padding: '6px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
+                      >
+                        Excluir
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 
   if (!logado) {
     return (
@@ -330,6 +449,7 @@ export default function App() {
 
   const menuLateral = [
     { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
+    { id: 'aulas', label: 'Horários / Aulas', icon: '🕒' },
     { id: 'frequencias', label: 'Frequência', icon: '📋' },
     { id: 'alunos', label: 'Alunos', icon: '👤+' },
     { id: 'turmas', label: 'Turmas', icon: '🏫' },
@@ -339,7 +459,6 @@ export default function App() {
     { id: 'comunicados', label: 'Comunicados', icon: '🔔' }
   ];
 
-  // Lista única de turmas para o select de filtro
   const turmasUnicas = Array.from(new Set([
     ...turmas.map((t) => t.nome),
     ...frequencias.map((f) => f.turma_nome)
@@ -413,10 +532,83 @@ export default function App() {
             </div>
           )}
 
-          {/* ==================== TELA: RELATÓRIOS (IGUAL À IMAGEM) ==================== */}
+          {/* ==================== TELA: DASHBOARD (COM PRÓXIMAS AULAS) ==================== */}
+          {abaAtiva === 'dashboard' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ background: '#fff', borderRadius: '14px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                <h2 style={{ margin: '0 0 16px 0', fontSize: '18px' }}>Resumo Geral</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                    <div style={{ fontSize: '26px', fontWeight: '700', color: '#2563eb' }}>{stats.alunos}</div>
+                    <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Alunos Matriculados</div>
+                  </div>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                    <div style={{ fontSize: '26px', fontWeight: '700', color: '#d97706' }}>{stats.turmas}</div>
+                    <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Turmas Ativas</div>
+                  </div>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                    <div style={{ fontSize: '26px', fontWeight: '700', color: '#16a34a' }}>{stats.presenca}%</div>
+                    <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Frequência Média</div>
+                  </div>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
+                    <div style={{ fontSize: '26px', fontWeight: '700', color: '#090d16' }}>{stats.aulas}</div>
+                    <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Aulas Hoje</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloco Próximas Aulas / Agenda de hoje (idêntico à imagem) */}
+              {renderCardProximasAulas(false)}
+            </div>
+          )}
+
+          {/* ==================== TELA: HORÁRIOS / AULAS ==================== */}
+          {abaAtiva === 'aulas' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {credenciais.perfil === 'professor' && (
+                <section style={{ background: '#fff', padding: '24px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+                  <h3 style={{ marginTop: 0 }}>{idEdicaoAula ? 'Editar Horário de Aula' : 'Agendar Nova Aula / Atividade'}</h3>
+                  <form
+                    onSubmit={(e) => salvarRegistro(
+                      e, 'aulas', idEdicaoAula, formAula,
+                      () => { setIdEdicaoAula(null); setFormAula({ hora_inicio: '08:00', hora_fim: '09:30', turma: '', atividade: '', sala: '', status: 'Em breve' }); },
+                      idEdicaoAula ? 'Aula atualizada com sucesso!' : 'Aula agendada com sucesso!'
+                    )}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}
+                  >
+                    <div><label>Hora Início:</label><input type="time" value={formAula.hora_inicio} onChange={(e) => setFormAula({ ...formAula, hora_inicio: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Hora Término:</label><input type="time" value={formAula.hora_fim} onChange={(e) => setFormAula({ ...formAula, hora_fim: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div>
+                      <label>Status:</label>
+                      <select value={formAula.status} onChange={(e) => setFormAula({ ...formAula, status: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                        <option value="Em breve">Em breve</option>
+                        <option value="Agendada">Agendada</option>
+                      </select>
+                    </div>
+                    <div><label>Turma (ex: Turma A - Maternal I):</label><input type="text" value={formAula.turma} onChange={(e) => setFormAula({ ...formAula, turma: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Atividade / Disciplina:</label><input type="text" placeholder="Ex: Artes e Pintura" value={formAula.atividade} onChange={(e) => setFormAula({ ...formAula, atividade: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div><label>Sala (ex: Sala 101):</label><input type="text" value={formAula.sala} onChange={(e) => setFormAula({ ...formAula, sala: e.target.value })} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} /></div>
+                    <div style={{ gridColumn: 'span 3', display: 'flex', gap: '10px', marginTop: '6px' }}>
+                      <button type="submit" style={{ padding: '10px 18px', background: '#090d16', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
+                        {idEdicaoAula ? 'Atualizar Aula' : 'Salvar na Agenda de Hoje'}
+                      </button>
+                      {idEdicaoAula && (
+                        <button type="button" onClick={() => { setIdEdicaoAula(null); setFormAula({ hora_inicio: '08:00', hora_fim: '09:30', turma: '', atividade: '', sala: '', status: 'Em breve' }); }} style={{ padding: '10px 18px', background: '#64748b', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </section>
+              )}
+
+              {renderCardProximasAulas(true)}
+            </div>
+          )}
+
+          {/* ==================== TELA: RELATÓRIOS ==================== */}
           {abaAtiva === 'relatorios' && (
             <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0' }}>
-              {/* Cabeçalho do Card */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Tabela de Frequência</h2>
@@ -444,7 +636,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* 5 Cards de Indicadores (KPIs) */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '28px' }}>
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
                   <div style={{ fontSize: '26px', fontWeight: '700', color: '#0f172a' }}>{relatorio.resumo.total}</div>
@@ -468,7 +659,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Barra de Filtros */}
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <span style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>⧩ Filtros</span>
@@ -529,7 +719,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Tabela Estilizada */}
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
                   <thead>
@@ -561,39 +750,6 @@ export default function App() {
                     )}
                   </tbody>
                 </table>
-              </div>
-            </div>
-          )}
-
-          {/* ==================== TELA: DASHBOARD ==================== */}
-          {abaAtiva === 'dashboard' && (
-            <div style={{ background: '#fff', borderRadius: '14px', padding: '28px', border: '1px solid #e2e8f0' }}>
-              <h2 style={{ marginTop: 0 }}>Visão Geral da Escola</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
-                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#2563eb' }}>{stats.alunos}</div>
-                  <div style={{ fontSize: '14px', color: '#64748b' }}>Alunos Matriculados</div>
-                </div>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
-                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#d97706' }}>{stats.turmas}</div>
-                  <div style={{ fontSize: '14px', color: '#64748b' }}>Turmas Ativas</div>
-                </div>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
-                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#7c3aed' }}>{stats.professores}</div>
-                  <div style={{ fontSize: '14px', color: '#64748b' }}>Professores</div>
-                </div>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
-                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#16a34a' }}>{stats.presenca}%</div>
-                  <div style={{ fontSize: '14px', color: '#64748b' }}>Frequência Média</div>
-                </div>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
-                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#ef4444' }}>{stats.comunicados}</div>
-                  <div style={{ fontSize: '14px', color: '#64748b' }}>Comunicados Publicados</div>
-                </div>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
-                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#0891b2' }}>{stats.agenda}</div>
-                  <div style={{ fontSize: '14px', color: '#64748b' }}>Registros na Agenda Diária</div>
-                </div>
               </div>
             </div>
           )}
