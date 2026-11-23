@@ -27,6 +27,42 @@ function converterObjeto(resultado) {
   return obj;
 }
 
+// POST /frequencias/lote (Chamada rápida de vários alunos de uma só vez)
+router.post("/lote", (req, res) => {
+  const { data, turma_nome, registros } = req.body;
+
+  if (!data || !data.trim() || !turma_nome || !turma_nome.trim()) {
+    return res.status(400).json({ erro: "Data da aula e turma são obrigatórias." });
+  }
+
+  if (!Array.isArray(registros) || registros.length === 0) {
+    return res.status(400).json({ erro: "Nenhum aluno enviado na lista de chamada." });
+  }
+
+  try {
+    registros.forEach((item) => {
+      db.run(
+        `INSERT INTO frequencias (aluno_nome, turma_nome, data, status, observacao)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          item.aluno_nome.trim(),
+          turma_nome.trim(),
+          data.trim(),
+          item.presente ? "Presente" : "Falta",
+          item.presente ? "Presença confirmada na chamada" : "Ausência registrada na chamada"
+        ]
+      );
+    });
+
+    salvarBanco();
+    return res.status(201).json({
+      mensagem: `Frequência de ${registros.length} aluno(s) salva com sucesso!`
+    });
+  } catch (error) {
+    return res.status(500).json({ erro: "Erro ao salvar a frequência em lote." });
+  }
+});
+
 // POST /frequencias
 router.post("/", (req, res) => {
   const erro = validarFrequencia(req.body);
@@ -69,7 +105,7 @@ router.get("/estatisticas", (req, res) => {
   }
 });
 
-// GET /frequencias/relatorio (Endpoint dedicado para a tela de Relatórios + Exportação CSV)
+// GET /frequencias/relatorio
 router.get("/relatorio", (req, res) => {
   const { aluno, status, turma, data } = req.query;
 
