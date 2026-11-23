@@ -90,6 +90,18 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS aulas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hora_inicio TEXT NOT NULL,
+    hora_fim TEXT NOT NULL,
+    turma TEXT NOT NULL,
+    atividade TEXT NOT NULL,
+    sala TEXT NOT NULL,
+    status TEXT NOT NULL
+  )
+`);
+
 fs.writeFileSync(
   dbPath,
   Buffer.from(db.export())

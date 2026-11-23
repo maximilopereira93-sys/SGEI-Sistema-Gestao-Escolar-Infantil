@@ -7,6 +7,7 @@ import professoresRoutes from "./routes/professores.js";
 import comunicadosRoutes from "./routes/comunicados.js";
 import frequenciasRoutes from "./routes/frequencias.js";
 import agendaRoutes from "./routes/agenda.js";
+import aulasRoutes from "./routes/aulas.js";
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use("/professores", professoresRoutes);
 app.use("/comunicados", comunicadosRoutes);
 app.use("/frequencias", frequenciasRoutes);
 app.use("/agenda", agendaRoutes);
+app.use("/aulas", aulasRoutes);
 
 const PORT = 3000;
 
